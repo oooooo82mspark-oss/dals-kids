@@ -10,61 +10,106 @@ import {
   BookOpen,
   GraduationCap,
   ExternalLink,
+  Calculator,
+  BookMarked,
 } from "lucide-react"
 import { RecommenderShell } from "@/components/recommender-shell"
 import { ComboRecommendation } from "@/components/combo-recommendation"
 import { DiagnosticBanner } from "@/components/diagnostic-banner"
 import { ProblemPrescription } from "@/components/problem-prescription"
 import { ParentFAQ } from "@/components/parent-faq"
+import { KoreanRecommender } from "@/components/korean-recommender"
+import { KoreanComboSection } from "@/components/korean-combo"
+import {
+  KoreanPrescriptionSection,
+  KoreanFAQSection,
+} from "@/components/korean-sections"
 
+type SubjectType = "math" | "korean"
 type TabType = "recommend" | "combo" | "prescription" | "faq"
 
-const tabs = [
+const mathTabs = [
   {
     id: "recommend" as TabType,
     label: "맞춤 교재 추천",
     shortLabel: "맞춤 추천",
     icon: Sparkles,
-    badge: "대표 기능",
   },
   {
     id: "combo" as TabType,
     label: "3권 황금 조합",
     shortLabel: "황금 조합",
     icon: Package,
-    badge: "세트 추천",
   },
   {
     id: "prescription" as TabType,
     label: "오답 증상 처방전",
     shortLabel: "오답 처방전",
     icon: Stethoscope,
-    badge: "1:1 매칭",
   },
   {
     id: "faq" as TabType,
     label: "학부모 필독 FAQ",
     shortLabel: "학부모 Q&A",
     icon: HelpCircle,
-    badge: "궁금증 해결",
   },
 ]
 
+const koreanTabs = [
+  {
+    id: "recommend" as TabType,
+    label: "문해력 진단 & 듀얼 추천",
+    shortLabel: "문해력 진단",
+    icon: Sparkles,
+  },
+  {
+    id: "combo" as TabType,
+    label: "국어 3권+책 조합",
+    shortLabel: "세트 조합",
+    icon: Package,
+  },
+  {
+    id: "prescription" as TabType,
+    label: "국어 증상별 처방전",
+    shortLabel: "국어 처방전",
+    icon: Stethoscope,
+  },
+  {
+    id: "faq" as TabType,
+    label: "독서·국어 FAQ",
+    shortLabel: "국어 Q&A",
+    icon: HelpCircle,
+  },
+]
+
+
 export default function Page() {
+  const [subject, setSubject] = useState<SubjectType>("math")
   const [activeTab, setActiveTab] = useState<TabType>("recommend")
+
+  const currentTabs = subject === "math" ? mathTabs : koreanTabs
+
+  const handleSubjectChange = (newSubject: SubjectType) => {
+    setSubject(newSubject)
+    setActiveTab("recommend")
+    window.scrollTo({ top: 0, behavior: "smooth" })
+  }
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-accent/30 via-background to-background pb-20">
       {/* 최상단 글로벌 헤더 & 유틸 바 */}
       <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-black text-base shadow-xs">
               달
             </div>
             <div>
               <span className="font-extrabold text-foreground tracking-tight text-base sm:text-lg">
-                달스키즈 <span className="text-primary font-bold text-xs sm:text-sm">수학추천</span>
+                달스키즈{" "}
+                <span className="text-primary font-bold text-xs sm:text-sm">
+                  {subject === "math" ? "수학 추천" : "국어·문해력 추천"}
+                </span>
               </span>
             </div>
           </div>
@@ -97,14 +142,48 @@ export default function Page() {
           </div>
         </div>
 
+        {/* 과목 전환 스위처 (수학 ⟷ 국어) */}
+        <div className="mx-auto max-w-4xl px-4 pt-1">
+          <div className="flex items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleSubjectChange("math")}
+              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-extrabold transition-all sm:text-sm ${
+                subject === "math"
+                  ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30"
+                  : "border border-border bg-card/80 text-muted-foreground hover:bg-card hover:text-foreground"
+              }`}
+            >
+              <Calculator className="h-4 w-4" />
+              <span>초등 수학</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleSubjectChange("korean")}
+              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-extrabold transition-all sm:text-sm ${
+                subject === "korean"
+                  ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-600/30"
+                  : "border border-border bg-card/80 text-muted-foreground hover:bg-card hover:text-foreground"
+              }`}
+            >
+              <BookMarked className="h-4 w-4" />
+              <span>초등 국어·문해력</span>
+              <span className="rounded-full bg-amber-400 px-1.5 py-0.2 text-[10px] font-black text-amber-950">
+                NEW
+              </span>
+            </button>
+          </div>
+        </div>
+
         {/* 메인 4개 카테고리 세그먼트 탭 바 */}
-        <div className="mx-auto max-w-4xl px-4 pb-2.5 pt-1">
+        <div className="mx-auto max-w-4xl px-4 pb-2.5 pt-2">
           <nav
             role="tablist"
             aria-label="서비스 카테고리"
             className="grid grid-cols-4 gap-1 rounded-2xl border border-border/80 bg-accent/40 p-1.5 shadow-xs"
           >
-            {tabs.map((tab) => {
+            {currentTabs.map((tab) => {
               const Icon = tab.icon
               const isActive = activeTab === tab.id
               return (
@@ -125,7 +204,11 @@ export default function Page() {
                 >
                   <Icon
                     className={`h-4 w-4 ${
-                      isActive ? "text-primary" : "text-muted-foreground"
+                      isActive
+                        ? subject === "korean"
+                          ? "text-emerald-600"
+                          : "text-primary"
+                        : "text-muted-foreground"
                     }`}
                     aria-hidden
                   />
@@ -140,46 +223,75 @@ export default function Page() {
         </div>
       </header>
 
-      {/* 탭별 단일 컨텐츠 렌더링 - 스크롤 과부하 제거 */}
+      {/* 탭별 단일 컨텐츠 렌더링 */}
       <div className="mt-2 transition-all">
-        {activeTab === "recommend" && (
-          <div className="animate-in fade-in-50 duration-200">
-            {/* 맞춤 추천 상단에는 EBS 진단 배너 함께 노출 */}
-            <DiagnosticBanner />
-            <RecommenderShell />
-          </div>
+        {/* ===================== [수학 과목 컨텐츠] ===================== */}
+        {subject === "math" && (
+          <>
+            {activeTab === "recommend" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <DiagnosticBanner />
+                <RecommenderShell />
+              </div>
+            )}
+            {activeTab === "combo" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <ComboRecommendation />
+              </div>
+            )}
+            {activeTab === "prescription" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <ProblemPrescription />
+              </div>
+            )}
+            {activeTab === "faq" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <ParentFAQ />
+              </div>
+            )}
+          </>
         )}
 
-        {activeTab === "combo" && (
-          <div className="animate-in fade-in-50 duration-200">
-            <ComboRecommendation />
-          </div>
-        )}
-
-        {activeTab === "prescription" && (
-          <div className="animate-in fade-in-50 duration-200">
-            <ProblemPrescription />
-          </div>
-        )}
-
-        {activeTab === "faq" && (
-          <div className="animate-in fade-in-50 duration-200">
-            <ParentFAQ />
-          </div>
+        {/* ===================== [국어 과목 컨텐츠] ===================== */}
+        {subject === "korean" && (
+          <>
+            {activeTab === "recommend" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <DiagnosticBanner />
+                <KoreanRecommender />
+              </div>
+            )}
+            {activeTab === "combo" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <KoreanComboSection />
+              </div>
+            )}
+            {activeTab === "prescription" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <KoreanPrescriptionSection />
+              </div>
+            )}
+            {activeTab === "faq" && (
+              <div className="animate-in fade-in-50 duration-200">
+                <KoreanFAQSection />
+              </div>
+            )}
+          </>
         )}
       </div>
 
       {/* 푸터 */}
       <footer className="mt-20 border-t border-border bg-card/40 py-8 text-center text-xs text-muted-foreground">
         <p className="font-semibold text-foreground/80">
-          달스키즈(Dals Kids) · 초등 수학 맞춤 추천 솔루션
+          달스키즈(Dals Kids) · 초등 수학 & 국어 문해력 맞춤 추천 솔루션
         </p>
         <p className="mt-1">
-          EBS 초등 진단평가 연계 · 수준별 3권 황금 조합 · 오답 증상별 처방전 · 학부모 Q&A
+          EBS 초등 진단평가 연계 · 수준별 황금 조합 · 문제집 + 필독서 듀얼 추천 · 오답 처방전
         </p>
       </footer>
     </main>
   )
 }
+
 
 
