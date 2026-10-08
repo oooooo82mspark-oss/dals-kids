@@ -161,3 +161,27 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* 수학 테마: 청명한 블루/인디고 시스템 */
+.theme-math {
+  --primary: oklch(0.55 0.22 250);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.93 0.05 240);
+  --secondary-foreground: oklch(0.3 0.12 250);
+  --accent: oklch(0.93 0.04 230);
+  --accent-foreground: oklch(0.28 0.1 250);
+  --ring: oklch(0.55 0.22 250);
+  --border: oklch(0.88 0.04 240);
+}
+
+/* 국어 테마: 싱그러운 에메랄드/세이지 시스템 */
+.theme-korean {
+  --primary: oklch(0.58 0.17 155);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.94 0.05 155);
+  --secondary-foreground: oklch(0.28 0.1 155);
+  --accent: oklch(0.93 0.04 150);
+  --accent-foreground: oklch(0.28 0.09 155);
+  --ring: oklch(0.58 0.17 155);
+  --border: oklch(0.89 0.04 155);
+}

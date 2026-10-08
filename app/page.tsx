@@ -102,8 +102,8 @@ export default function Page() {
     <main
       className={`min-h-screen pb-20 transition-colors duration-300 ${
         isMath
-          ? "bg-gradient-to-b from-sky-50/70 via-background to-background"
-          : "bg-gradient-to-b from-emerald-50/70 via-background to-background"
+          ? "theme-math bg-gradient-to-b from-blue-50/70 via-background to-background"
+          : "theme-korean bg-gradient-to-b from-emerald-50/70 via-background to-background"
       }`}
     >
       {/* 최상단 글로벌 헤더 & 유틸 바 */}
@@ -132,14 +132,32 @@ export default function Page() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* 출판사 난이도 비교 페이지 이동 */}
+            {/* 1. 상단 EBS 초등 진단평가 바로가기 링크 (유지!) */}
+            <a
+              href="https://primary.ebs.co.kr"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="EBS 초등 기초학력 진단평가 바로가기"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${
+                isMath
+                  ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+              }`}
+            >
+              <GraduationCap className="h-3.5 w-3.5" aria-hidden />
+              <span>EBS 진단평가</span>
+              <ExternalLink className="h-3 w-3 opacity-70" aria-hidden />
+            </a>
+
+            {/* 2. 출판사 난이도 비교 페이지 이동 */}
             <Link
               href="/guide"
               title="출판사 간 난이도 비교표 및 교재 정리"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-bold text-foreground shadow-xs transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-xs transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground sm:px-3.5"
             >
               <BookOpen className="h-3.5 w-3.5" aria-hidden />
-              <span>출판사 난이도 비교표</span>
+              <span className="hidden sm:inline">출판사 난이도 비교</span>
+              <span className="sm:hidden">난이도표</span>
             </Link>
           </div>
         </div>
@@ -232,7 +250,7 @@ export default function Page() {
           <>
             {activeTab === "recommend" && (
               <div className="animate-in fade-in-50 duration-200">
-                <DiagnosticBanner />
+                {/* 상단 헤더에 진단평가 버튼이 있으므로 중복 배너는 제거하고 본문 추천기에 집중 */}
                 <RecommenderShell />
               </div>
             )}
@@ -253,6 +271,7 @@ export default function Page() {
             )}
           </>
         )}
+
 
         {/* ===================== [국어 과목 컨텐츠] ===================== */}
         {subject === "korean" && (
