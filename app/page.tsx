@@ -95,62 +95,64 @@ export default function Page() {
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
+  // 수학(블루/인디고 테마) vs 국어(에메랄드/포레스트 테마)
+  const isMath = subject === "math"
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-accent/30 via-background to-background pb-20">
+    <main
+      className={`min-h-screen pb-20 transition-colors duration-300 ${
+        isMath
+          ? "bg-gradient-to-b from-sky-50/70 via-background to-background"
+          : "bg-gradient-to-b from-emerald-50/70 via-background to-background"
+      }`}
+    >
       {/* 최상단 글로벌 헤더 & 유틸 바 */}
       <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-md">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-black text-base shadow-xs">
-              달
+            <div
+              className={`flex h-9 w-9 items-center justify-center rounded-xl font-black text-base text-white shadow-xs transition-colors ${
+                isMath ? "bg-blue-600" : "bg-emerald-600"
+              }`}
+            >
+              {isMath ? "수" : "국"}
             </div>
             <div>
               <span className="font-extrabold text-foreground tracking-tight text-base sm:text-lg">
                 달스키즈{" "}
-                <span className="text-primary font-bold text-xs sm:text-sm">
-                  {subject === "math" ? "수학 추천" : "국어·문해력 추천"}
+                <span
+                  className={`font-bold text-xs sm:text-sm ${
+                    isMath ? "text-blue-600" : "text-emerald-700"
+                  }`}
+                >
+                  {isMath ? "수학 추천 시스템" : "국어·문해력 추천 시스템"}
                 </span>
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            {/* EBS 진단평가 퀵 링크 */}
-            <a
-              href="https://primary.ebs.co.kr"
-              target="_blank"
-              rel="noopener noreferrer"
-              title="EBS 초등 기초학력 진단평가 바로가기"
-              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/80 bg-emerald-50/80 px-3 py-1.5 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100 hover:text-emerald-900"
-            >
-              <GraduationCap className="h-3.5 w-3.5" aria-hidden />
-              <span className="hidden sm:inline">EBS 진단평가</span>
-              <span className="sm:hidden">EBS 진단</span>
-              <ExternalLink className="h-3 w-3 opacity-70" aria-hidden />
-            </a>
-
             {/* 출판사 난이도 비교 페이지 이동 */}
             <Link
               href="/guide"
               title="출판사 간 난이도 비교표 및 교재 정리"
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-bold text-foreground shadow-xs transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground sm:px-3.5"
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-bold text-foreground shadow-xs transition-all hover:border-primary hover:bg-primary hover:text-primary-foreground"
             >
               <BookOpen className="h-3.5 w-3.5" aria-hidden />
-              <span className="hidden sm:inline">출판사 난이도 비교</span>
-              <span className="sm:hidden">난이도 표</span>
+              <span>출판사 난이도 비교표</span>
             </Link>
           </div>
         </div>
 
         {/* 과목 전환 스위처 (수학 ⟷ 국어) */}
         <div className="mx-auto max-w-4xl px-4 pt-1">
-          <div className="flex items-center justify-center gap-2">
+          <div className="flex items-center justify-center gap-2.5">
             <button
               type="button"
               onClick={() => handleSubjectChange("math")}
-              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-extrabold transition-all sm:text-sm ${
-                subject === "math"
-                  ? "bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/30"
+              className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-extrabold transition-all sm:text-sm ${
+                isMath
+                  ? "bg-blue-600 text-white shadow-md ring-2 ring-blue-600/30 scale-102"
                   : "border border-border bg-card/80 text-muted-foreground hover:bg-card hover:text-foreground"
               }`}
             >
@@ -161,9 +163,9 @@ export default function Page() {
             <button
               type="button"
               onClick={() => handleSubjectChange("korean")}
-              className={`flex items-center gap-2 rounded-full px-5 py-2 text-xs font-extrabold transition-all sm:text-sm ${
-                subject === "korean"
-                  ? "bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-600/30"
+              className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-extrabold transition-all sm:text-sm ${
+                !isMath
+                  ? "bg-emerald-600 text-white shadow-md ring-2 ring-emerald-600/30 scale-102"
                   : "border border-border bg-card/80 text-muted-foreground hover:bg-card hover:text-foreground"
               }`}
             >
@@ -205,9 +207,9 @@ export default function Page() {
                   <Icon
                     className={`h-4 w-4 ${
                       isActive
-                        ? subject === "korean"
-                          ? "text-emerald-600"
-                          : "text-primary"
+                        ? isMath
+                          ? "text-blue-600"
+                          : "text-emerald-600"
                         : "text-muted-foreground"
                     }`}
                     aria-hidden
@@ -257,7 +259,6 @@ export default function Page() {
           <>
             {activeTab === "recommend" && (
               <div className="animate-in fade-in-50 duration-200">
-                <DiagnosticBanner />
                 <KoreanRecommender />
               </div>
             )}
@@ -292,6 +293,7 @@ export default function Page() {
     </main>
   )
 }
+
 
 
 
