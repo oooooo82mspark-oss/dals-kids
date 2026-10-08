@@ -82,7 +82,7 @@ export const koreanQuizByGrade: Record<number, KoreanQuizQuestion[]> = {
     {
       id: "k3-1",
       type: "어휘",
-      question: "다음 문장의 밑줄 친 부분과 뜻이 가장 가까운 낱말은? [동생은 약속 시간에 <u>어김없이</u> 나타났다.]",
+      question: "다음 문장에서 밑줄 친 낱말과 뜻이 가장 가까운 것은? [동생은 약속 시간에 '어김없이' 나타났다.]",
       options: ["틀림없이", "간신히", "우연히", "마지못해"],
       correctIndex: 0,
       explanation: "'어김없이'는 규칙이나 약속에서 벗어남이 없이 틀림없다는 뜻입니다.",

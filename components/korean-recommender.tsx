@@ -137,7 +137,19 @@ export function KoreanRecommender() {
           )}
 
           <h3 className="mt-4 text-lg font-bold text-foreground sm:text-xl leading-snug">
-            {currentQ.question}
+            {currentQ.question.split(/('[^']+')/).map((part, i) => {
+              if (part.startsWith("'") && part.endsWith("'")) {
+                return (
+                  <span
+                    key={i}
+                    className="mx-1 inline-block rounded-sm border-b-2 border-emerald-600 font-extrabold text-emerald-800 underline-offset-4"
+                  >
+                    {part.slice(1, -1)}
+                  </span>
+                )
+              }
+              return part
+            })}
           </h3>
 
           <div className="mt-6 space-y-3">
