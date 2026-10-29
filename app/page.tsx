@@ -159,6 +159,17 @@ export default function Page() {
               <span className="hidden sm:inline">출판사 난이도 비교</span>
               <span className="sm:hidden">난이도표</span>
             </Link>
+
+            {/* 3. 귀여운 영단어장 바로가기 */}
+            <Link
+              href="/vocab"
+              title="어린이 맞춤 영단어장 & 단어 시험"
+              className="inline-flex items-center gap-1.5 rounded-full border border-pink-200 bg-pink-50 px-3 py-1.5 text-xs font-bold text-pink-700 shadow-xs transition-all hover:bg-pink-100 hover:border-pink-300 sm:px-3.5"
+            >
+              <span>🐣</span>
+              <span className="hidden sm:inline">영단어장</span>
+              <span className="sm:hidden">단어장</span>
+            </Link>
           </div>
         </div>
 
