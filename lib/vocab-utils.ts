@@ -39,7 +39,7 @@ export function parseTextToWords(text: string): VocabWord[] {
 
   const addWord = (rawEn: string, rawKo: string) => {
     const en = rawEn.trim().replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '')
-    const ko = rawKo.trim().replace(/^[^가-힣0-9]+|[^가-힣0-9]+$/g, '')
+    const ko = rawKo.trim().replace(/^[^가-힣0-9~]+|[^가-힣0-9~]+$/g, '')
 
     // 유효성 검사
     if (!en || !ko) return
@@ -47,7 +47,7 @@ export function parseTextToWords(text: string): VocabWord[] {
     if (STOP_WORDS.has(en.toLowerCase())) return
     // 한글이 적어도 한 글자 이상 포함되어야 함
     if (!/[가-힣]/.test(ko)) return
-    // 영단어는 알파벳, 띄어쓰기, 하이픈, 아포스트로피만 허용
+    // 영단어는 알파벳, 띄어쓰기, 하이픈, 아포스트로피만 허용 (예: well-balanced, wait for)
     if (!/^[a-zA-Z][a-zA-Z\s\-']*$/.test(en)) return
 
     const normalizedEn = en.toLowerCase()

@@ -4,7 +4,7 @@ const git = require('isomorphic-git');
 const http = require('isomorphic-git/http/node');
 const { execSync } = require('child_process');
 
-async function pushClean() {
+async function pushUpdate() {
   const dir = path.resolve(__dirname);
   const token = execSync('gh auth token').toString().trim();
   const branch = await git.currentBranch({ fs, dir }) || 'master';
@@ -23,9 +23,9 @@ async function pushClean() {
     fs,
     dir,
     author: { name: 'dals-kids-assistant', email: 'assistant@dalskids.com' },
-    message: 'Cleanup: remove push script and update word-list tts',
+    message: 'Feat: Add Curious George worksheet preset and phrase parsing improvements',
   });
-  console.log('Clean commit:', sha);
+  console.log('Committed:', sha);
 
   await git.push({
     fs,
@@ -35,7 +35,7 @@ async function pushClean() {
     ref: branch,
     onAuth: () => ({ username: token, password: '' }),
   });
-  console.log('Clean push complete!');
+  console.log('Successfully pushed Curious George update to GitHub & Vercel!');
 }
 
-pushClean().catch(console.error);
+pushUpdate().catch(console.error);

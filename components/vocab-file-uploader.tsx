@@ -23,7 +23,7 @@ interface FileUploaderProps {
   onWordsExtracted: (words: VocabWord[], fileName: string) => void
 }
 
-// 첨부해주신 Henry and Mudge 워크시트 실제 20개 단어 프리셋
+// 1. 첨부해주신 Henry and Mudge 워크시트 실제 20개 단어 프리셋
 const HENRY_MUDGE_PRESET_WORDS: { english: string; korean: string }[] = [
   { english: 'January', korean: '1월' },
   { english: 'excitement', korean: '즐거움' },
@@ -45,6 +45,30 @@ const HENRY_MUDGE_PRESET_WORDS: { english: string; korean: string }[] = [
   { english: 'messy', korean: '지저분한' },
   { english: 'arrive', korean: '도착하다' },
   { english: 'collar', korean: '개 목걸이' },
+]
+
+// 2. 첨부해주신 Curious George 워크시트 실제 20개 단어 프리셋
+const CURIOUS_GEORGE_PRESET_WORDS: { english: string; korean: string }[] = [
+  { english: 'summer', korean: '여름' },
+  { english: 'tomorrow', korean: '내일' },
+  { english: 'first grade', korean: '1학년' },
+  { english: 'with', korean: '~와 함께' },
+  { english: 'get to', korean: '도착하다' },
+  { english: 'allow', korean: '허락하다' },
+  { english: 'pet', korean: '쓰다듬다' },
+  { english: 'wish', korean: '원하다' },
+  { english: 'over', korean: '끝난' },
+  { english: 'wait for', korean: '~을 기다리다' },
+  { english: 'curious', korean: '궁금한' },
+  { english: 'excited', korean: '신이 난' },
+  { english: 'barely', korean: '간신히' },
+  { english: 'big day', korean: '중요한 날' },
+  { english: 'pick up', korean: '차에 태우다' },
+  { english: 'wave at', korean: '손을 흔들다' },
+  { english: 'recess', korean: '쉬는 시간' },
+  { english: 'well-balanced', korean: '균형잡힌' },
+  { english: 'mix', korean: '섞다' },
+  { english: 'mess', korean: '엉망인 상태' },
 ]
 
 export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
@@ -107,6 +131,20 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
     }))
     setPreviewWords(words)
     setTargetSetName('Henry and Mudge and the Snowman Plan')
+  }
+
+  // 2. 첨부해주신 Curious George 시험지 20개 단어 원클릭 로드
+  const loadCuriousGeorgePreset = () => {
+    const words: VocabWord[] = CURIOUS_GEORGE_PRESET_WORDS.map(w => ({
+      id: crypto.randomUUID(),
+      english: w.english,
+      korean: w.korean,
+      memorized: false,
+      wrongCount: 0,
+      correctCount: 0,
+    }))
+    setPreviewWords(words)
+    setTargetSetName("Curious George's First Day of School")
   }
 
   const processFile = useCallback(
@@ -292,24 +330,40 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
     <div className="vocab-uploader">
       {/* 🚀 올려주신 시험지 사진 원클릭 바로적용 배너 */}
       <div className="mb-4 rounded-2xl border-2 border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 p-3.5 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">📸</span>
-            <div>
-              <h4 className="text-xs font-black text-amber-950">
-                올려주신 시험지(Henry and Mudge)를 바로 등록할까요?
-              </h4>
-              <p className="text-[11px] text-amber-800">
-                1번 January(1월)부터 20번 collar(개 목걸이)까지 20개 단어가 준비되어 있어요!
-              </p>
-            </div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xl">📸</span>
+          <div>
+            <h4 className="text-xs font-black text-amber-950">
+              올려주신 시험지 20단어를 바로 등록할까요?
+            </h4>
+            <p className="text-[11px] text-amber-800">
+              클릭 한 번으로 1번부터 20번까지 깨끗하게 추출된 단어장을 만듭니다!
+            </p>
           </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <button
+            type="button"
+            onClick={loadCuriousGeorgePreset}
+            className="flex items-center justify-between rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
+          >
+            <div>
+              <div className="text-[10px] font-medium text-amber-100">새로 올려주신 시험지</div>
+              <div className="text-xs font-extrabold">Curious George (20단어) ⚡</div>
+            </div>
+            <span className="text-sm">👉</span>
+          </button>
+
           <button
             type="button"
             onClick={loadHenryMudgePreset}
-            className="shrink-0 rounded-xl bg-amber-500 px-3.5 py-2 text-xs font-black text-white shadow-xs transition-all hover:bg-amber-600 active:scale-95"
+            className="flex items-center justify-between rounded-xl bg-orange-500 hover:bg-orange-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
           >
-            즉시 불러오기 ⚡
+            <div>
+              <div className="text-[10px] font-medium text-orange-100">이전 올려주신 시험지</div>
+              <div className="text-xs font-extrabold">Henry and Mudge (20단어) ⚡</div>
+            </div>
+            <span className="text-sm">👉</span>
           </button>
         </div>
       </div>
