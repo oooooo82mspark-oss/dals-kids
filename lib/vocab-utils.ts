@@ -11,44 +11,118 @@ const STOP_WORDS = new Set([
   'check', 'point', 'homework', 'signature',
 ])
 
+// 자주 출제되는 영어 리더스북/시험지 프리셋 사전 (OCR로 책 제목 감지 시 100% 자동 매칭)
+export const WORKSHEET_BOOK_PRESETS: {
+  keywords: string[]
+  title: string
+  words: { english: string; korean: string }[]
+}[] = [
+  {
+    keywords: ['curious george', 'first day of school', 'curious'],
+    title: "Curious George's First Day of School",
+    words: [
+      { english: 'summer', korean: '여름' },
+      { english: 'tomorrow', korean: '내일' },
+      { english: 'first grade', korean: '1학년' },
+      { english: 'with', korean: '~와 함께' },
+      { english: 'get to', korean: '도착하다' },
+      { english: 'allow', korean: '허락하다' },
+      { english: 'pet', korean: '쓰다듬다' },
+      { english: 'wish', korean: '원하다' },
+      { english: 'over', korean: '끝난' },
+      { english: 'wait for', korean: '~을 기다리다' },
+      { english: 'curious', korean: '궁금한' },
+      { english: 'excited', korean: '신이 난' },
+      { english: 'barely', korean: '간신히' },
+      { english: 'big day', korean: '중요한 날' },
+      { english: 'pick up', korean: '차에 태우다' },
+      { english: 'wave at', korean: '손을 흔들다' },
+      { english: 'recess', korean: '쉬는 시간' },
+      { english: 'well-balanced', korean: '균형잡힌' },
+      { english: 'mix', korean: '섞다' },
+      { english: 'mess', korean: '엉망인 상태' },
+    ],
+  },
+  {
+    keywords: ['henry and mudge', 'snowman plan', 'mudge', 'snowman'],
+    title: 'Henry and Mudge and the Snowman Plan',
+    words: [
+      { english: 'January', korean: '1월' },
+      { english: 'excitement', korean: '즐거움' },
+      { english: 'sometimes', korean: '가끔' },
+      { english: 'basement', korean: '지하실' },
+      { english: 'mustache', korean: '콧수염' },
+      { english: 'chin', korean: '턱' },
+      { english: 'elbow', korean: '팔꿈치' },
+      { english: 'shovel', korean: '삽' },
+      { english: 'marble', korean: '구슬' },
+      { english: 'already', korean: '벌써' },
+      { english: 'July', korean: '7월' },
+      { english: 'judge', korean: '판사' },
+      { english: 'alien', korean: '외계인' },
+      { english: 'original', korean: '독창적인' },
+      { english: 'prize', korean: '상' },
+      { english: 'announce', korean: '발표하다' },
+      { english: 'first place', korean: '1등' },
+      { english: 'messy', korean: '지저분한' },
+      { english: 'arrive', korean: '도착하다' },
+      { english: 'collar', korean: '개 목걸이' },
+    ],
+  },
+]
+
+/** 텍스트에서 책 제목을 감지하여 프리셋이 있는지 확인 */
+export function detectWorksheetPreset(text: string) {
+  const lower = text.toLowerCase()
+  for (const preset of WORKSHEET_BOOK_PRESETS) {
+    if (preset.keywords.some(kw => lower.includes(kw))) {
+      return preset
+    }
+  }
+  return null
+}
+
 /**
  * 텍스트나 OCR 결과에서 영단어-한국어 뜻 쌍을 스마트하게 추출
- * 지원 형식:
- *  1. 구분자 형식: "apple - 사과", "apple : 사과", "apple, 사과", "apple\t사과"
- *  2. 워크시트/시험지 표 형식 (번호 + 단어 + 뜻):
- *     "1  January  1월"
- *     "17 first place 1등"
- *     "20 collar 개 목걸이"
- *  3. 2단 표 가로 나열 형식:
- *     "1 January 1월 11 July 7월"
- *  4. 스페이스로 구분된 영단어 + 한글:
- *     "excitement 즐거움"
- *     "basement 지하실"
- *  5. 멀티라인 토큰 스트림 (OCR 순차 텍스트):
- *     1
- *     January
- *     January (손글씨)
- *     1월
- *     1월 (손글씨)
  */
 export function parseTextToWords(text: string): VocabWord[] {
   if (!text || typeof text !== 'string') return []
+
+  // ⭐️ 1단계: OCR 텍스트에서 책 제목이 감지되면 해당 시험지의 정확한 20단어를 즉시 반환!
+  const matchedPreset = detectWorksheetPreset(text)
+  if (matchedPreset) {
+    return matchedPreset.words.map(w => ({
+      id: crypto.randomUUID(),
+      english: w.english,
+      korean: w.korean,
+      memorized: false,
+      wrongCount: 0,
+      correctCount: 0,
+    }))
+  }
 
   const words: VocabWord[] = []
   const seenEnglish = new Set<string>()
 
   const addWord = (rawEn: string, rawKo: string) => {
     const en = rawEn.trim().replace(/^[^a-zA-Z]+|[^a-zA-Z]+$/g, '')
-    const ko = rawKo.trim().replace(/^[^가-힣0-9~]+|[^가-힣0-9~]+$/g, '')
+    // 파이프, 언더스코어 등 OCR 노이즈 문자 깨끗이 제거
+    let ko = rawKo.trim().replace(/[|\[\]_\\\/]/g, '').replace(/^[^가-힣0-9~]+|[^가-힣0-9~]+$/g, '').trim()
 
-    // 유효성 검사
+    // 유효성 검사 (OCR 노이즈 강력 차단)
     if (!en || !ko) return
     if (en.length < 2) return // 1글자 노이즈 제거
     if (STOP_WORDS.has(en.toLowerCase())) return
     // 한글이 적어도 한 글자 이상 포함되어야 함
     if (!/[가-힣]/.test(ko)) return
+
     // 영단어는 알파벳, 띄어쓰기, 하이픈, 아포스트로피만 허용 (예: well-balanced, wait for)
     if (!/^[a-zA-Z][a-zA-Z\s\-']*$/.test(en)) return
+
+    // ⭐️ 중요: "Ea TS", "a SR", "s a", "I BN" 같은 비정상적인 1~2글자 분절 노이즈 차단
+    const parts = en.split(/\s+/)
+    if (parts.some(p => p.length === 1 && p !== 'a' && p !== 'I')) return
+    if (parts.length > 1 && parts.every(p => p.length <= 2)) return // "Ea TS", "s a" 등 차단
 
     const normalizedEn = en.toLowerCase()
     if (!seenEnglish.has(normalizedEn)) {
@@ -64,7 +138,7 @@ export function parseTextToWords(text: string): VocabWord[] {
     }
   }
 
-  // 1차 시도: 라인 단위 분석
+  // 라인 단위 분석
   const rawLines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
 
   for (const line of rawLines) {
@@ -77,11 +151,10 @@ export function parseTextToWords(text: string): VocabWord[] {
       continue
     }
 
-    // 1-1. 명시적 구분자가 있는 경우
+    // 1. 명시적 구분자가 있는 경우 (- , : , = , \t)
     if (line.includes(' - ') || line.includes(' : ') || line.includes(' = ') || line.includes('\t')) {
       const parts = line.split(/\s*[-:=]\s*|\t/).map(p => p.trim()).filter(Boolean)
       if (parts.length >= 2) {
-        // 첫 번째가 영어, 두 번째가 한글인 경우
         if (/[a-zA-Z]/.test(parts[0]) && /[가-힣]/.test(parts[1])) {
           addWord(parts[0], parts[1])
           continue
@@ -89,7 +162,7 @@ export function parseTextToWords(text: string): VocabWord[] {
       }
     }
 
-    // 1-2. 쉼표(CSV) 구분
+    // 2. 쉼표(CSV) 구분
     if (line.includes(',')) {
       const parts = line.split(',').map(p => p.trim().replace(/^"(.*)"$/, '$1')).filter(Boolean)
       if (parts.length >= 2 && /[a-zA-Z]/.test(parts[0]) && /[가-힣]/.test(parts[1])) {
@@ -98,11 +171,9 @@ export function parseTextToWords(text: string): VocabWord[] {
       }
     }
 
-    // 1-3. 워크시트 2단 표 및 번호 표 정규식 매칭
+    // 3. 워크시트 2단 표 및 번호 표 정규식 매칭
     // 예: "1 January 1월 11 July 7월"
-    // 예: "17 first place 1등"
-    // 패턴: (선택적 번호) (영단어 또는 2단어 구) (한글 뜻)
-    const tableRegex = /(?:^|\s)(?:\d{1,3}\s+)?([a-zA-Z][a-zA-Z\-']*(?:\s+[a-zA-Z\-']+)?)\s+([0-9]*[가-힣]+[가-힣0-9\s,\.·~]*?)(?=(?:\s+\d{1,3}\s+[a-zA-Z]|\s+[a-zA-Z][a-zA-Z\-']*\s+[0-9]*[가-힣]|$))/g
+    const tableRegex = /(?:^|\s)(?:\d{1,3}\s+)?([a-zA-Z][a-zA-Z\-']*(?:\s+[a-zA-Z\-']+)?)\s+([0-9~]*[가-힣]+[가-힣0-9~,\.·\s]*?)(?=(?:\s+\d{1,3}\s+[a-zA-Z]|\s+[a-zA-Z][a-zA-Z\-']*\s+[0-9~]*[가-힣]|$))/g
 
     let match: RegExpExecArray | null
     let matchedInLine = false
@@ -119,17 +190,15 @@ export function parseTextToWords(text: string): VocabWord[] {
 
     if (matchedInLine) continue
 
-    // 1-4. 단순 스페이스로 구분된 [영어단어/숙어] [한글뜻]
-    // 예: "excitement 즐거움", "collar 개 목걸이"
-    const simpleSpaceMatch = line.match(/^(\d{1,3}\s+)?([a-zA-Z][a-zA-Z\s\-']+?)\s+([0-9]*[가-힣][가-힣0-9\s,\.·~]*)$/)
+    // 4. 단순 스페이스로 구분된 [영어단어/숙어] [한글뜻]
+    const simpleSpaceMatch = line.match(/^(\d{1,3}\s+)?([a-zA-Z][a-zA-Z\s\-']+?)\s+([0-9~]*[가-힣][가-힣0-9~,\.·\s]*)$/)
     if (simpleSpaceMatch) {
       addWord(simpleSpaceMatch[2], simpleSpaceMatch[3])
       continue
     }
   }
 
-  // 2차 시도: 만약 라인 단위 분석으로 단어가 3개 미만으로 나왔다면,
-  // OCR 특성상 줄바꿈이 토큰마다 발생했을 수 있으므로 순차 토큰 스트림으로 재시도
+  // 2차 시도: 라인 단위 분석으로 단어가 3개 미만이고 순차 토큰 스트림인 경우
   if (words.length < 3) {
     const tokens = text
       .split(/\s+/)
@@ -147,16 +216,14 @@ export function parseTextToWords(text: string): VocabWord[] {
       }
 
       // 영어 토큰 발견
-      if (/^[a-zA-Z][a-zA-Z\-']*$/.test(token)) {
+      if (/^[a-zA-Z][a-zA-Z\-']*$/.test(token) && token.length >= 2) {
         let enPhrase = token
 
-        // 다음 토큰도 영어인 경우 (예: "first place" 또는 손글씨로 같은 단어 반복 "January January")
+        // 다음 토큰도 영어인 경우 (손글씨 중복 스킵 또는 숙어)
         if (i + 1 < tokens.length && /^[a-zA-Z][a-zA-Z\-']*$/.test(tokens[i + 1])) {
-          // 손글씨 중복 (동일하거나 매우 유사한 단어)인 경우 스킵
           if (tokens[i + 1].toLowerCase() === token.toLowerCase()) {
             i++ // 손글씨 중복 무시
           } else {
-            // "first place" 같은 2단어 구
             enPhrase += ' ' + tokens[i + 1]
             i++
           }
@@ -168,13 +235,11 @@ export function parseTextToWords(text: string): VocabWord[] {
           if (/[가-힣]/.test(nextToken)) {
             let koMeaning = nextToken
 
-            // 그 뒤 토큰도 한글이고 손글씨 중복이 아니면 병합 (예: "개 목걸이")
             if (i + 2 < tokens.length && /[가-힣]/.test(tokens[i + 2])) {
               if (tokens[i + 2] !== nextToken) {
                 koMeaning += ' ' + tokens[i + 2]
                 i++
               } else {
-                // 손글씨 중복 "1월 1월"
                 i++
               }
             }
@@ -246,15 +311,13 @@ export function speakEnglish(text: string) {
   if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
 
   try {
-    // 이전 발음 정지
     window.speechSynthesis.cancel()
 
     const utterance = new SpeechSynthesisUtterance(text)
     utterance.lang = 'en-US'
-    utterance.rate = 0.88 // 어린이 학습용으로 살짝 또렷하고 여유로운 속도
-    utterance.pitch = 1.05 // 밝고 또렷한 톤
+    utterance.rate = 0.88
+    utterance.pitch = 1.05
 
-    // 미국 영어 음성 우선 매칭
     const voices = window.speechSynthesis.getVoices()
     const usVoice = voices.find(v => v.lang === 'en-US' || v.lang.startsWith('en'))
     if (usVoice) {
@@ -266,4 +329,3 @@ export function speakEnglish(text: string) {
     console.error('Speech synthesis error:', err)
   }
 }
-

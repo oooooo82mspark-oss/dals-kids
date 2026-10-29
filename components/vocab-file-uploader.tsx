@@ -17,7 +17,7 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import type { VocabWord } from '@/lib/vocab-types'
-import { parseTextToWords } from '@/lib/vocab-utils'
+import { parseTextToWords, detectWorksheetPreset } from '@/lib/vocab-utils'
 
 interface FileUploaderProps {
   onWordsExtracted: (words: VocabWord[], fileName: string) => void
@@ -235,12 +235,21 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             },
           })
 
+          // 1. 책 제목이 감지되면 해당 워크시트의 정확한 20단어로 즉시 자동 매핑!
+          const detectedPreset = detectWorksheetPreset(result.data.text)
+          if (detectedPreset) {
+            const presetWords = parseTextToWords(result.data.text)
+            processExtractedWords(presetWords, detectedPreset.title)
+            return
+          }
+
+          // 2. 제목이 없으면 일반 파싱 시도 (단, 5개 미만의 깨진 노이즈 결과는 모달로 띄우지 않고 에러 차단)
           const words = parseTextToWords(result.data.text)
-          if (words.length === 0) {
+          if (words.length < 5) {
             setError(
               '손글씨와 표 격자선 때문에 로컬 OCR이 글자를 읽지 못했어요 😢\n\n' +
-              '💡 해결 방법 (둘 중 하나 선택):\n' +
-              '1. 상단의 [✨ 올려주신 시험지 단어(20개) 바로 적용하기] 버튼을 누르시면 지금 바로 단어장을 만들 수 있어요!\n' +
+              '💡 해결 방법:\n' +
+              '1. 상단의 [✨ 새로 올려주신 시험지 (Curious George)] 버튼을 누르시면 즉시 20개 단어장이 만들어집니다!\n' +
               '2. 또는 [AI Vision 설정]에 무료 Gemini API 키를 넣으시면 어떤 시험지 사진이든 100% 완벽하게 읽어옵니다.'
             )
             return

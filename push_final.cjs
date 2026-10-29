@@ -4,7 +4,7 @@ const git = require('isomorphic-git');
 const http = require('isomorphic-git/http/node');
 const { execSync } = require('child_process');
 
-async function pushUpdate() {
+async function pushFinal() {
   const dir = path.resolve(__dirname);
   const token = execSync('gh auth token').toString().trim();
   const branch = await git.currentBranch({ fs, dir }) || 'master';
@@ -23,9 +23,9 @@ async function pushUpdate() {
     fs,
     dir,
     author: { name: 'dals-kids-assistant', email: 'assistant@dalskids.com' },
-    message: 'Feat: Add Curious George worksheet preset and phrase parsing improvements',
+    message: 'Fix: Intelligent book title preset auto-matching and block noisy OCR artifacts',
   });
-  console.log('Committed:', sha);
+  console.log('Committed SHA:', sha);
 
   await git.push({
     fs,
@@ -35,7 +35,7 @@ async function pushUpdate() {
     ref: branch,
     onAuth: () => ({ username: token, password: '' }),
   });
-  console.log('Successfully pushed Curious George update to GitHub & Vercel!');
+  console.log('Successfully pushed to GitHub origin master!');
 }
 
-pushUpdate().catch(console.error);
+pushFinal().catch(console.error);
