@@ -11,6 +11,13 @@ const STOP_WORDS = new Set([
   'check', 'point', 'homework', 'signature',
 ])
 
+// 유효한 2글자 영단어 화이트리스트 (cs, wb, jy 등 OCR 깨진 글자 차단)
+const VALID_2_LETTER_WORDS = new Set([
+  'am', 'an', 'as', 'at', 'be', 'by', 'do', 'go', 'he', 'hi',
+  'if', 'in', 'is', 'it', 'me', 'my', 'no', 'of', 'on', 'or',
+  'so', 'to', 'up', 'us', 'we', 'ox'
+])
+
 // 자주 출제되는 영어 리더스북/시험지 프리셋 사전 (OCR로 책 제목 또는 본문 단어 감지 시 100% 자동 매칭)
 export const WORKSHEET_BOOK_PRESETS: {
   keywords: string[]
@@ -19,7 +26,10 @@ export const WORKSHEET_BOOK_PRESETS: {
   words: { english: string; korean: string }[]
 }[] = [
   {
-    keywords: ['curious george', 'first day of school', 'curious', 'george'],
+    keywords: [
+      'curious george', 'first day of school', 'curious', 'george',
+      '큐리어스', '조지', '호기심 많은 조지'
+    ],
     distinctiveWords: [
       'summer', 'tomorrow', 'first grade', 'allow', 'recess',
       'well-balanced', 'barely', 'big day', 'wave at', 'pet', 'wish', 'mess'
@@ -49,10 +59,13 @@ export const WORKSHEET_BOOK_PRESETS: {
     ],
   },
   {
-    keywords: ['henry and mudge', 'snowman plan', 'mudge', 'snowman'],
+    keywords: [
+      'henry and mudge', 'snowman plan', 'mudge', 'snowman', 'henry',
+      '헨리', '머지', '눈사람'
+    ],
     distinctiveWords: [
       'january', 'excitement', 'basement', 'mustache', 'shovel',
-      'marble', 'alien', 'first place', 'collar'
+      'marble', 'alien', 'first place', 'collar', 'messy', 'announce'
     ],
     title: 'Henry and Mudge and the Snowman Plan',
     words: [
@@ -131,8 +144,13 @@ export function parseTextToWords(text: string): VocabWord[] {
     if (!en || !ko) return
     if (en.length < 2) return // 1글자 노이즈 제거
     if (STOP_WORDS.has(en.toLowerCase())) return
-    // 한글이 적어도 한 글자 이상 포함되어야 함
+
+    // 2글자 단어는 유효한 단어(am, an, in, on 등)만 허용 (cs, wb, jy 등 노이즈 차단)
+    if (en.length === 2 && !VALID_2_LETTER_WORDS.has(en.toLowerCase())) return
+
+    // 한글이 적어도 한 글자 이상 포함되어야 하며, 영문자가 섞인 열 혼입 노이즈는 제외
     if (!/[가-힣]/.test(ko)) return
+    if (/[a-zA-Z]/.test(ko)) return
 
     // 영단어는 알파벳, 띄어쓰기, 하이픈, 아포스트로피만 허용 (예: well-balanced, wait for)
     if (!/^[a-zA-Z][a-zA-Z\s\-']*$/.test(en)) return

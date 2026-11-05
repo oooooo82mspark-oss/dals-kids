@@ -71,6 +71,40 @@ const CURIOUS_GEORGE_PRESET_WORDS: { english: string; korean: string }[] = [
   { english: 'mess', korean: '엉망인 상태' },
 ]
 
+/**
+ * 브라우저에서 File을 Canvas로 변환하고 지정 각도(0, 90, 180, 270)로 회전 및 적정 크기(1800px)로 스케일링
+ * 스마트폰 카메라(EXIF 6 등)로 비스듬히 찍거나 가로로 돌아간 시험지 사진을 똑바로 정렬하여 OCR 인식률을 극대화합니다.
+ */
+async function prepareOrientedCanvas(file: File, rotationDeg: number = 0): Promise<HTMLCanvasElement> {
+  const bitmap = await createImageBitmap(file)
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas context not available')
+
+  const isPerpendicular = rotationDeg % 180 !== 0
+  const width = isPerpendicular ? bitmap.height : bitmap.width
+  const height = isPerpendicular ? bitmap.width : bitmap.height
+
+  // 스마트폰 원본의 과도한 고해상도(4000px 등)를 1800px로 최적화하여 OCR 속도와 정확도 극대화
+  const maxDim = 1800
+  const scale = Math.min(1, maxDim / Math.max(width, height))
+  canvas.width = Math.round(width * scale)
+  canvas.height = Math.round(height * scale)
+
+  ctx.save()
+  ctx.translate(canvas.width / 2, canvas.height / 2)
+  ctx.rotate((rotationDeg * Math.PI) / 180)
+  ctx.drawImage(
+    bitmap,
+    -Math.round((bitmap.width * scale) / 2),
+    -Math.round((bitmap.height * scale) / 2),
+    Math.round(bitmap.width * scale),
+    Math.round(bitmap.height * scale)
+  )
+  ctx.restore()
+  return canvas
+}
+
 export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
   const [activeTab, setActiveTab] = useState<'file' | 'text'>('file')
   const [isDragOver, setIsDragOver] = useState(false)
@@ -155,6 +189,21 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
       try {
         const extension = file.name.split('.').pop()?.toLowerCase()
 
+        // 0. 파일명 자체에 책 제목이나 워크시트 키워드가 있는 경우 즉시 100% 매핑!
+        const namePreset = detectWorksheetPreset(file.name)
+        if (namePreset) {
+          const presetWords: VocabWord[] = namePreset.words.map(w => ({
+            id: crypto.randomUUID(),
+            english: w.english,
+            korean: w.korean,
+            memorized: false,
+            wrongCount: 0,
+            correctCount: 0,
+          }))
+          processExtractedWords(presetWords, namePreset.title)
+          return
+        }
+
         // 1. 텍스트 / CSV
         if (extension === 'txt' || extension === 'csv') {
           setProcessingStatus('📄 텍스트 파일 읽는 중...')
@@ -224,20 +273,46 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           }
 
           // B. API 키가 없거나 실패 시 로컬 Tesseract OCR 시도
-          setProcessingStatus('🔍 학습지 단어 인식 중 (로컬 OCR)...')
+          setProcessingStatus('🔍 학습지 단어 분석 중 (스마트 보정 OCR)...')
           const Tesseract = await import('tesseract.js')
-          const result = await Tesseract.recognize(file, 'eng+kor', {
+
+          // 1차: 정방향 캔버스(0°)에서 시도 (1800px 최적화 스케일링)
+          const canvas0 = await prepareOrientedCanvas(file, 0)
+          const result0 = await Tesseract.recognize(canvas0, 'eng+kor', {
             langPath: '/tessdata',
             logger: (info: any) => {
               if (info.status === 'recognizing text') {
                 const pct = Math.round((info.progress || 0) * 100)
-                setProcessingStatus(`🔍 글자 인식 중... ${pct}%`)
+                setProcessingStatus(`🔍 글자 분석 중... ${pct}%`)
               }
             },
           })
 
+          let bestResult = result0
+          let detectedPreset = detectWorksheetPreset(result0.data.text)
+
+          // ⭐️ 스마트폰 가로촬영 등 사진이 90도 회전되어 저장된 경우(EXIF 6 등) 90도 회전 재분석
+          if (!detectedPreset) {
+            setProcessingStatus('🔄 사진 각도 보정 중 (90° 회전 감지)...')
+            const canvas90 = await prepareOrientedCanvas(file, 90)
+            const result90 = await Tesseract.recognize(canvas90, 'eng+kor', { langPath: '/tessdata' })
+            const preset90 = detectWorksheetPreset(result90.data.text)
+            if (preset90) {
+              detectedPreset = preset90
+              bestResult = result90
+            } else {
+              // 270도 회전 점검
+              const canvas270 = await prepareOrientedCanvas(file, 270)
+              const result270 = await Tesseract.recognize(canvas270, 'eng+kor', { langPath: '/tessdata' })
+              const preset270 = detectWorksheetPreset(result270.data.text)
+              if (preset270) {
+                detectedPreset = preset270
+                bestResult = result270
+              }
+            }
+          }
+
           // 1. 책 제목 또는 본문 단어가 감지되면 해당 워크시트의 정확한 20단어로 즉시 자동 매핑!
-          const detectedPreset = detectWorksheetPreset(result.data.text)
           if (detectedPreset) {
             const presetWords: VocabWord[] = detectedPreset.words.map(w => ({
               id: crypto.randomUUID(),
@@ -251,13 +326,13 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             return
           }
 
-          // 2. 제목이 없으면 일반 파싱 시도 (단, 5개 미만의 깨진 노이즈 결과는 모달로 띄우지 않고 에러 차단)
-          const words = parseTextToWords(result.data.text)
+          // 2. 프리셋이 아니면 파싱 시도 (단, 2글자 이상 유효 단어 및 한글 뜻만 엄격 검증)
+          const words = parseTextToWords(bestResult.data.text)
           if (words.length < 5) {
             setError(
               '손글씨와 표 격자선 때문에 로컬 OCR이 글자를 읽지 못했어요 😢\n\n' +
               '💡 해결 방법:\n' +
-              '1. 상단의 [첨부된 사진 시험지 (Curious George 20단어)] 버튼을 누르시면 즉시 단어장이 완성됩니다!\n' +
+              '1. 상단의 [Henry and Mudge] 또는 [Curious George] 버튼을 누르시면 즉시 20개 단어장이 만들어집니다!\n' +
               '2. 또는 [AI Vision 설정]에 무료 Gemini API 키를 넣으시면 어떤 시험지 사진이든 100% 완벽하게 읽어옵니다.'
             )
             return
@@ -391,11 +466,10 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           <button
             type="button"
             onClick={() => setActiveTab('file')}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-extrabold transition-all ${
-              activeTab === 'file'
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-extrabold transition-all ${activeTab === 'file'
                 ? 'bg-pink-500 text-white shadow-sm'
                 : 'bg-white border border-pink-100 text-gray-500 hover:bg-pink-50'
-            }`}
+              }`}
           >
             <Upload size={14} />
             <span>사진/파일 업로드</span>
@@ -403,11 +477,10 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           <button
             type="button"
             onClick={() => setActiveTab('text')}
-            className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-extrabold transition-all ${
-              activeTab === 'text'
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-xs font-extrabold transition-all ${activeTab === 'text'
                 ? 'bg-pink-500 text-white shadow-sm'
                 : 'bg-white border border-pink-100 text-gray-500 hover:bg-pink-50'
-            }`}
+              }`}
           >
             <ClipboardList size={14} />
             <span>텍스트 직접 입력</span>
@@ -418,11 +491,10 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
         <button
           type="button"
           onClick={() => setShowApiKeyModal(true)}
-          className={`flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold transition-all ${
-            savedApiKey
+          className={`flex items-center gap-1.5 rounded-xl px-3 py-2.5 text-xs font-bold transition-all ${savedApiKey
               ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
               : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-          }`}
+            }`}
           title="AI 시각인식 설정"
         >
           <Key size={13} className={savedApiKey ? 'text-emerald-600' : 'text-gray-400'} />
