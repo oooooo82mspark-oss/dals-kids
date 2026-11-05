@@ -11,14 +11,19 @@ const STOP_WORDS = new Set([
   'check', 'point', 'homework', 'signature',
 ])
 
-// 자주 출제되는 영어 리더스북/시험지 프리셋 사전 (OCR로 책 제목 감지 시 100% 자동 매칭)
+// 자주 출제되는 영어 리더스북/시험지 프리셋 사전 (OCR로 책 제목 또는 본문 단어 감지 시 100% 자동 매칭)
 export const WORKSHEET_BOOK_PRESETS: {
   keywords: string[]
+  distinctiveWords: string[]
   title: string
   words: { english: string; korean: string }[]
 }[] = [
   {
-    keywords: ['curious george', 'first day of school', 'curious'],
+    keywords: ['curious george', 'first day of school', 'curious', 'george'],
+    distinctiveWords: [
+      'summer', 'tomorrow', 'first grade', 'allow', 'recess',
+      'well-balanced', 'barely', 'big day', 'wave at', 'pet', 'wish', 'mess'
+    ],
     title: "Curious George's First Day of School",
     words: [
       { english: 'summer', korean: '여름' },
@@ -45,6 +50,10 @@ export const WORKSHEET_BOOK_PRESETS: {
   },
   {
     keywords: ['henry and mudge', 'snowman plan', 'mudge', 'snowman'],
+    distinctiveWords: [
+      'january', 'excitement', 'basement', 'mustache', 'shovel',
+      'marble', 'alien', 'first place', 'collar'
+    ],
     title: 'Henry and Mudge and the Snowman Plan',
     words: [
       { english: 'January', korean: '1월' },
@@ -71,11 +80,20 @@ export const WORKSHEET_BOOK_PRESETS: {
   },
 ]
 
-/** 텍스트에서 책 제목을 감지하여 프리셋이 있는지 확인 */
+/** 텍스트에서 책 제목 또는 본문 단어 패턴을 감지하여 프리셋이 있는지 확인 */
 export function detectWorksheetPreset(text: string) {
+  if (!text) return null
   const lower = text.toLowerCase()
+
   for (const preset of WORKSHEET_BOOK_PRESETS) {
+    // 1. 키워드/제목 직접 매칭
     if (preset.keywords.some(kw => lower.includes(kw))) {
+      return preset
+    }
+
+    // 2. 시험지 본문 고유 단어 2개 이상 일치 시 자동 감지 (제목이 잘렸거나 노이즈가 심할 때)
+    const matchCount = preset.distinctiveWords.filter(w => lower.includes(w)).length
+    if (matchCount >= 2) {
       return preset
     }
   }
@@ -258,6 +276,66 @@ export function parseTextToWords(text: string): VocabWord[] {
   return words
 }
 
+// 기본 탑재 단어장 (첫 방문 또는 초기화 시 바로 제공)
+export const DEFAULT_VOCAB_SETS: import('./vocab-types').VocabSet[] = [
+  {
+    id: 'preset-curious-george',
+    name: "Curious George's First Day of School",
+    createdAt: '2026-10-24T09:00:00.000Z',
+    lastTestedAt: null,
+    words: [
+      { id: 'cg-1', english: 'summer', korean: '여름', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-2', english: 'tomorrow', korean: '내일', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-3', english: 'first grade', korean: '1학년', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-4', english: 'with', korean: '~와 함께', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-5', english: 'get to', korean: '도착하다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-6', english: 'allow', korean: '허락하다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-7', english: 'pet', korean: '쓰다듬다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-8', english: 'wish', korean: '원하다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-9', english: 'over', korean: '끝난', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-10', english: 'wait for', korean: '~을 기다리다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-11', english: 'curious', korean: '궁금한', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-12', english: 'excited', korean: '신이 난', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-13', english: 'barely', korean: '간신히', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-14', english: 'big day', korean: '중요한 날', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-15', english: 'pick up', korean: '차에 태우다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-16', english: 'wave at', korean: '손을 흔들다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-17', english: 'recess', korean: '쉬는 시간', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-18', english: 'well-balanced', korean: '균형잡힌', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-19', english: 'mix', korean: '섞다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'cg-20', english: 'mess', korean: '엉망인 상태', memorized: false, wrongCount: 0, correctCount: 0 },
+    ],
+  },
+  {
+    id: 'preset-henry-mudge',
+    name: 'Henry and Mudge and the Snowman Plan',
+    createdAt: '2026-10-15T09:00:00.000Z',
+    lastTestedAt: null,
+    words: [
+      { id: 'hm-1', english: 'January', korean: '1월', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-2', english: 'excitement', korean: '즐거움', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-3', english: 'sometimes', korean: '가끔', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-4', english: 'basement', korean: '지하실', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-5', english: 'mustache', korean: '콧수염', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-6', english: 'chin', korean: '턱', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-7', english: 'elbow', korean: '팔꿈치', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-8', english: 'shovel', korean: '삽', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-9', english: 'marble', korean: '구슬', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-10', english: 'already', korean: '벌써', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-11', english: 'July', korean: '7월', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-12', english: 'judge', korean: '판사', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-13', english: 'alien', korean: '외계인', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-14', english: 'original', korean: '독창적인', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-15', english: 'prize', korean: '상', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-16', english: 'announce', korean: '발표하다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-17', english: 'first place', korean: '1등', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-18', english: 'messy', korean: '지저분한', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-19', english: 'arrive', korean: '도착하다', memorized: false, wrongCount: 0, correctCount: 0 },
+      { id: 'hm-20', english: 'collar', korean: '개 목걸이', memorized: false, wrongCount: 0, correctCount: 0 },
+    ],
+  },
+]
+
 /** localStorage에 단어장 저장 */
 export function saveVocabSets(sets: import('./vocab-types').VocabSet[]) {
   if (typeof window !== 'undefined') {
@@ -267,13 +345,15 @@ export function saveVocabSets(sets: import('./vocab-types').VocabSet[]) {
 
 /** localStorage에서 단어장 로드 */
 export function loadVocabSets(): import('./vocab-types').VocabSet[] {
-  if (typeof window === 'undefined') return []
+  if (typeof window === 'undefined') return DEFAULT_VOCAB_SETS
   const data = localStorage.getItem('dals-vocab-sets')
-  if (!data) return []
+  if (!data) return DEFAULT_VOCAB_SETS
   try {
-    return JSON.parse(data)
+    const parsed = JSON.parse(data)
+    if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    return DEFAULT_VOCAB_SETS
   } catch {
-    return []
+    return DEFAULT_VOCAB_SETS
   }
 }
 

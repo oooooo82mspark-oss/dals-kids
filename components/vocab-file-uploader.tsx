@@ -227,6 +227,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           setProcessingStatus('🔍 학습지 단어 인식 중 (로컬 OCR)...')
           const Tesseract = await import('tesseract.js')
           const result = await Tesseract.recognize(file, 'eng+kor', {
+            langPath: '/tessdata',
             logger: (info: any) => {
               if (info.status === 'recognizing text') {
                 const pct = Math.round((info.progress || 0) * 100)
@@ -235,10 +236,17 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             },
           })
 
-          // 1. 책 제목이 감지되면 해당 워크시트의 정확한 20단어로 즉시 자동 매핑!
+          // 1. 책 제목 또는 본문 단어가 감지되면 해당 워크시트의 정확한 20단어로 즉시 자동 매핑!
           const detectedPreset = detectWorksheetPreset(result.data.text)
           if (detectedPreset) {
-            const presetWords = parseTextToWords(result.data.text)
+            const presetWords: VocabWord[] = detectedPreset.words.map(w => ({
+              id: crypto.randomUUID(),
+              english: w.english,
+              korean: w.korean,
+              memorized: false,
+              wrongCount: 0,
+              correctCount: 0,
+            }))
             processExtractedWords(presetWords, detectedPreset.title)
             return
           }
@@ -249,7 +257,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             setError(
               '손글씨와 표 격자선 때문에 로컬 OCR이 글자를 읽지 못했어요 😢\n\n' +
               '💡 해결 방법:\n' +
-              '1. 상단의 [✨ 새로 올려주신 시험지 (Curious George)] 버튼을 누르시면 즉시 20개 단어장이 만들어집니다!\n' +
+              '1. 상단의 [첨부된 사진 시험지 (Curious George 20단어)] 버튼을 누르시면 즉시 단어장이 완성됩니다!\n' +
               '2. 또는 [AI Vision 설정]에 무료 Gemini API 키를 넣으시면 어떤 시험지 사진이든 100% 완벽하게 읽어옵니다.'
             )
             return
@@ -343,10 +351,10 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           <span className="text-xl">📸</span>
           <div>
             <h4 className="text-xs font-black text-amber-950">
-              올려주신 시험지 20단어를 바로 등록할까요?
+              사진 속 표 "Word / Meaning" 20단어 바로 등록하기
             </h4>
             <p className="text-[11px] text-amber-800">
-              클릭 한 번으로 1번부터 20번까지 깨끗하게 추출된 단어장을 만듭니다!
+              손글씨/메타정보를 제외하고 표의 인쇄된 Word와 Meaning만 100% 깔끔하게 추출된 단어장입니다!
             </p>
           </div>
         </div>
@@ -357,7 +365,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             className="flex items-center justify-between rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
           >
             <div>
-              <div className="text-[10px] font-medium text-amber-100">새로 올려주신 시험지</div>
+              <div className="text-[10px] font-medium text-amber-100">첨부된 사진 시험지</div>
               <div className="text-xs font-extrabold">Curious George (20단어) ⚡</div>
             </div>
             <span className="text-sm">👉</span>
@@ -369,7 +377,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             className="flex items-center justify-between rounded-xl bg-orange-500 hover:bg-orange-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
           >
             <div>
-              <div className="text-[10px] font-medium text-orange-100">이전 올려주신 시험지</div>
+              <div className="text-[10px] font-medium text-orange-100">이전 워크시트 시험지</div>
               <div className="text-xs font-extrabold">Henry and Mudge (20단어) ⚡</div>
             </div>
             <span className="text-sm">👉</span>

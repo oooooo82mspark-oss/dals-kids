@@ -13,7 +13,7 @@ import {
   FileText,
 } from 'lucide-react'
 import type { VocabWord, VocabSet, QuizResult } from '@/lib/vocab-types'
-import { saveVocabSets, loadVocabSets } from '@/lib/vocab-utils'
+import { saveVocabSets, loadVocabSets, DEFAULT_VOCAB_SETS } from '@/lib/vocab-utils'
 import { FileUploader } from '@/components/vocab-file-uploader'
 import { WordList } from '@/components/vocab-word-list'
 import { VocabQuiz } from '@/components/vocab-quiz'
@@ -188,9 +188,23 @@ export default function VocabPage() {
             {/* 단어장 목록 */}
             {vocabSets.length > 0 ? (
               <div className="vocab-sets-list">
-                <h2 className="vocab-sets-title">
-                  📚 내 단어장 ({vocabSets.length})
-                </h2>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="vocab-sets-title" style={{ marginBottom: 0 }}>
+                    📚 내 단어장 ({vocabSets.length})
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm('사진 속 시험지 단어장(Curious George, Henry and Mudge)을 다시 불러올까요?')) {
+                        setVocabSets(DEFAULT_VOCAB_SETS)
+                        saveVocabSets(DEFAULT_VOCAB_SETS)
+                      }
+                    }}
+                    className="text-[11px] font-bold text-gray-400 hover:text-pink-600 transition-colors cursor-pointer"
+                  >
+                    🔄 시험지 단어장 다시 불러오기
+                  </button>
+                </div>
                 {vocabSets.map(set => {
                   const memorized = set.words.filter(w => w.memorized).length
                   const total = set.words.length
