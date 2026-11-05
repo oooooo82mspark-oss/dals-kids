@@ -23,12 +23,17 @@ export async function POST(req: NextRequest) {
 
     const prompt = `You are an expert OCR and education assistant.
 Examine this vocabulary worksheet/test image carefully.
-Extract all English vocabulary words and their corresponding Korean meanings from the printed table.
+The table has TWO rows per vocabulary item:
+- TOP row: PRINTED/TYPESET text (the actual word and Korean meaning) — EXTRACT THIS ONLY
+- BOTTOM row: HANDWRITTEN text (student copied the word by hand) — COMPLETELY IGNORE THIS
+
 Rules:
-1. Extract the PRINTED English words and Korean meanings. Do NOT extract the handwritten text underneath.
-2. Ignore headers like '#', 'Word', 'Meaning', 'Date', 'Name', 'Teacher', 'Parents', 'Book Title', 'Read out loud', etc.
-3. Return ONLY a valid JSON array of objects with "english" and "korean" fields.
-4. No markdown, no code fences, no explanations. Just raw JSON: [{"english": "January", "korean": "1월"}, ...]
+1. ONLY extract from the PRINTED rows. Printed text is clean, uniform, and typeset.
+2. COMPLETELY IGNORE all handwritten text. Handwriting appears below each printed word and looks informal/cursive.
+3. Ignore headers: '#', 'Word', 'Meaning', 'Date', 'Name', 'Teacher', 'Parents', 'Book Title', 'Read out loud', etc.
+4. The table may have 2 columns (left side: items 1-10, right side: items 11-20). Extract all items from both columns.
+5. Return ONLY a valid JSON array of objects with "english" and "korean" fields.
+6. No markdown, no code fences, no explanations. Just raw JSON: [{"english": "January", "korean": "1월"}, ...]
 `
 
     const response = await fetch(
