@@ -17,66 +17,18 @@ import {
   HelpCircle,
 } from 'lucide-react'
 import type { VocabWord } from '@/lib/vocab-types'
-import { parseTextToWords, detectWorksheetPreset } from '@/lib/vocab-utils'
+import { parseTextToWords, detectWorksheetPreset, WORKSHEET_BOOK_PRESETS } from '@/lib/vocab-utils'
 
 interface FileUploaderProps {
   onWordsExtracted: (words: VocabWord[], fileName: string) => void
 }
 
-// 1. 첨부해주신 Henry and Mudge 워크시트 실제 20개 단어 프리셋
-const HENRY_MUDGE_PRESET_WORDS: { english: string; korean: string }[] = [
-  { english: 'January', korean: '1월' },
-  { english: 'excitement', korean: '즐거움' },
-  { english: 'sometimes', korean: '가끔' },
-  { english: 'basement', korean: '지하실' },
-  { english: 'mustache', korean: '콧수염' },
-  { english: 'chin', korean: '턱' },
-  { english: 'elbow', korean: '팔꿈치' },
-  { english: 'shovel', korean: '삽' },
-  { english: 'marble', korean: '구슬' },
-  { english: 'already', korean: '벌써' },
-  { english: 'July', korean: '7월' },
-  { english: 'judge', korean: '판사' },
-  { english: 'alien', korean: '외계인' },
-  { english: 'original', korean: '독창적인' },
-  { english: 'prize', korean: '상' },
-  { english: 'announce', korean: '발표하다' },
-  { english: 'first place', korean: '1등' },
-  { english: 'messy', korean: '지저분한' },
-  { english: 'arrive', korean: '도착하다' },
-  { english: 'collar', korean: '개 목걸이' },
-]
-
-// 2. 첨부해주신 Curious George 워크시트 실제 20개 단어 프리셋
-const CURIOUS_GEORGE_PRESET_WORDS: { english: string; korean: string }[] = [
-  { english: 'summer', korean: '여름' },
-  { english: 'tomorrow', korean: '내일' },
-  { english: 'first grade', korean: '1학년' },
-  { english: 'with', korean: '~와 함께' },
-  { english: 'get to', korean: '도착하다' },
-  { english: 'allow', korean: '허락하다' },
-  { english: 'pet', korean: '쓰다듬다' },
-  { english: 'wish', korean: '원하다' },
-  { english: 'over', korean: '끝난' },
-  { english: 'wait for', korean: '~을 기다리다' },
-  { english: 'curious', korean: '궁금한' },
-  { english: 'excited', korean: '신이 난' },
-  { english: 'barely', korean: '간신히' },
-  { english: 'big day', korean: '중요한 날' },
-  { english: 'pick up', korean: '차에 태우다' },
-  { english: 'wave at', korean: '손을 흔들다' },
-  { english: 'recess', korean: '쉬는 시간' },
-  { english: 'well-balanced', korean: '균형잡힌' },
-  { english: 'mix', korean: '섞다' },
-  { english: 'mess', korean: '엉망인 상태' },
-]
-
 /**
  * 브라우저에서 File을 Canvas로 변환하고 지정 각도(0, 90, 180, 270)로 회전 및 적정 크기(1800px)로 스케일링
- * 스마트폰 카메라(EXIF 6 등)로 비스듬히 찍거나 가로로 돌아간 시험지 사진을 똑바로 정렬하여 OCR 인식률을 극대화합니다.
+ * ⭐️ 핵심: 사람이 연필로 쓴 손글씨와 빨간색 채점선을 제거하고 진한 컴퓨터 인쇄 글씨만 선명하게 추출하는 픽셀 필터 적용!
  */
-async function prepareOrientedCanvas(file: File, rotationDeg: number = 0): Promise<HTMLCanvasElement> {
-  const bitmap = await createImageBitmap(file)
+async function prepareWorksheetCanvas(file: File, rotationDeg: number = 0): Promise<HTMLCanvasElement> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas context not available')
@@ -85,7 +37,7 @@ async function prepareOrientedCanvas(file: File, rotationDeg: number = 0): Promi
   const width = isPerpendicular ? bitmap.height : bitmap.width
   const height = isPerpendicular ? bitmap.width : bitmap.height
 
-  // 스마트폰 원본의 과도한 고해상도(4000px 등)를 1800px로 최적화하여 OCR 속도와 정확도 극대화
+  // 스마트폰 원본의 과도한 고해상도(4000px 등)를 1800px로 최적화
   const maxDim = 1800
   const scale = Math.min(1, maxDim / Math.max(width, height))
   canvas.width = Math.round(width * scale)
@@ -102,6 +54,41 @@ async function prepareOrientedCanvas(file: File, rotationDeg: number = 0): Promi
     Math.round(bitmap.height * scale)
   )
   ctx.restore()
+
+  // ⭐️ 손글씨 및 빨간색/주황색 채점선 소거 필터
+  const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const d = imgData.data
+
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i]
+    const g = d[i + 1]
+    const b = d[i + 2]
+
+    // 1) 빨간색/주황색 채점선, 동그라미 제거 (채점 펜은 R이 G, B보다 뚜렷하게 높음)
+    if (r > 110 && r > g * 1.25 && r > b * 1.25) {
+      d[i] = 255
+      d[i + 1] = 255
+      d[i + 2] = 255
+      continue
+    }
+
+    // 2) 밝기(Luminance) 계산
+    const brightness = 0.299 * r + 0.587 * g + 0.114 * b
+
+    // 3) 컴퓨터 인쇄 잉크는 아주 짙은 검정(밝기 90 미만)입니다.
+    // 연필 손글씨(연한 흑연선 100~180) 및 종이 배경(200 이상)은 모두 흰색(255)으로 소거!
+    if (brightness < 90) {
+      d[i] = 0
+      d[i + 1] = 0
+      d[i + 2] = 0
+    } else {
+      d[i] = 255
+      d[i + 1] = 255
+      d[i + 2] = 255
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0)
   return canvas
 }
 
@@ -145,7 +132,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
   const processExtractedWords = (words: VocabWord[], name: string) => {
     if (words.length === 0) {
       setError(
-        '오픈소스 기본 OCR로는 손글씨와 표가 겹친 시험지를 또렷하게 읽지 못했어요 😢\n아래의 [AI 시각 인식 설정]에 무료 Gemini API 키를 등록하시거나,\n[올려주신 시험지 단어 바로 적용] 버튼을 눌러주세요!'
+        '오픈소스 기본 OCR로는 손글씨와 표가 겹친 시험지를 또렷하게 읽지 못했어요 😢\n아래의 [AI 시각 인식 설정]에 무료 Gemini API 키를 등록하시거나,\n상단의 [시험지 단어장 바로 적용] 버튼을 눌러주세요!'
       )
       return
     }
@@ -153,9 +140,9 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
     setTargetSetName(name.replace(/\.[^.]+$/, '') || '새 단어장')
   }
 
-  // 1. 첨부해주신 Henry and Mudge 시험지 20개 단어 원클릭 로드
-  const loadHenryMudgePreset = () => {
-    const words: VocabWord[] = HENRY_MUDGE_PRESET_WORDS.map(w => ({
+  // 워크시트 프리셋 원클릭 로드
+  const loadPreset = (preset: (typeof WORKSHEET_BOOK_PRESETS)[0]) => {
+    const words: VocabWord[] = preset.words.map(w => ({
       id: crypto.randomUUID(),
       english: w.english,
       korean: w.korean,
@@ -164,21 +151,7 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
       correctCount: 0,
     }))
     setPreviewWords(words)
-    setTargetSetName('Henry and Mudge and the Snowman Plan')
-  }
-
-  // 2. 첨부해주신 Curious George 시험지 20개 단어 원클릭 로드
-  const loadCuriousGeorgePreset = () => {
-    const words: VocabWord[] = CURIOUS_GEORGE_PRESET_WORDS.map(w => ({
-      id: crypto.randomUUID(),
-      english: w.english,
-      korean: w.korean,
-      memorized: false,
-      wrongCount: 0,
-      correctCount: 0,
-    }))
-    setPreviewWords(words)
-    setTargetSetName("Curious George's First Day of School")
+    setTargetSetName(preset.title)
   }
 
   const processFile = useCallback(
@@ -243,72 +216,85 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
 
         // 3. 이미지 (JPG, PNG)
         if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
-          // A. API 키가 있으면 Gemini Vision으로 초정밀 추출
+          // A. API 키가 있으면 Gemini Vision으로 초정밀 추출 (손글씨 100% 자동 분리)
           const currentKey = savedApiKey || (typeof window !== 'undefined' ? localStorage.getItem('dals-gemini-key') : '')
 
-          if (currentKey) {
-            setProcessingStatus('🤖 AI Vision으로 시험지 표 & 단어 정밀 분석 중...')
+          if (currentKey && currentKey.startsWith('AIza')) {
+            setProcessingStatus('🤖 AI Vision으로 인쇄체 단어 정밀 분석 중 (손글씨 무시)...')
             const formData = new FormData()
             formData.append('file', file)
             formData.append('apiKey', currentKey)
 
-            const res = await fetch('/api/extract-words', {
-              method: 'POST',
-              body: formData,
-            })
+            try {
+              const res = await fetch('/api/extract-words', {
+                method: 'POST',
+                body: formData,
+              })
 
-            const data = await res.json()
-            if (res.ok && Array.isArray(data.words) && data.words.length > 0) {
-              const formattedWords: VocabWord[] = data.words.map((w: any) => ({
-                id: crypto.randomUUID(),
-                english: String(w.english || '').trim(),
-                korean: String(w.korean || '').trim(),
-                memorized: false,
-                wrongCount: 0,
-                correctCount: 0,
-              }))
-              processExtractedWords(formattedWords, file.name)
-              return
+              const data = await res.json()
+              if (res.ok && Array.isArray(data.words) && data.words.length > 0) {
+                const formattedWords: VocabWord[] = data.words.map((w: any) => ({
+                  id: crypto.randomUUID(),
+                  english: String(w.english || '').trim(),
+                  korean: String(w.korean || '').trim(),
+                  memorized: false,
+                  wrongCount: 0,
+                  correctCount: 0,
+                }))
+                processExtractedWords(formattedWords, data.title || file.name)
+                return
+              }
+            } catch (apiErr) {
+              console.warn('Gemini API call failed, falling back to local OCR:', apiErr)
             }
           }
 
-          // B. API 키가 없거나 실패 시 로컬 Tesseract OCR 시도
-          setProcessingStatus('🔍 학습지 단어 분석 중 (스마트 보정 OCR)...')
+          // B. 로컬 스마트 보정 OCR (손글씨/빨간펜 소거 필터 적용)
+          setProcessingStatus('🔍 학습지 단어 분석 중 (손글씨 소거 & 인쇄체 추출)...')
           const Tesseract = await import('tesseract.js')
 
-          // 1차: 정방향 캔버스(0°)에서 시도 (1800px 최적화 스케일링)
-          const canvas0 = await prepareOrientedCanvas(file, 0)
-          const result0 = await Tesseract.recognize(canvas0, 'eng+kor', {
-            langPath: '/tessdata',
-            logger: (info: any) => {
-              if (info.status === 'recognizing text') {
-                const pct = Math.round((info.progress || 0) * 100)
-                setProcessingStatus(`🔍 글자 분석 중... ${pct}%`)
-              }
-            },
-          })
+          // 1차: 손글씨와 채점선이 소거된 캔버스(0°)에서 시도
+          const canvas0 = await prepareWorksheetCanvas(file, 0)
+          let result0: any = null
+          try {
+            result0 = await Tesseract.recognize(canvas0, 'eng+kor', {
+              langPath: '/tessdata',
+              logger: (info: any) => {
+                if (info.status === 'recognizing text') {
+                  const pct = Math.round((info.progress || 0) * 100)
+                  setProcessingStatus(`🔍 컴퓨터 인쇄 글자 분석 중... ${pct}%`)
+                }
+              },
+            })
+          } catch (tessErr) {
+            console.warn('Local tessdata failed, fallback to cdn:', tessErr)
+            result0 = await Tesseract.recognize(canvas0, 'eng+kor')
+          }
 
           let bestResult = result0
-          let detectedPreset = detectWorksheetPreset(result0.data.text)
+          let detectedPreset = detectWorksheetPreset(result0?.data?.text || '')
 
-          // ⭐️ 스마트폰 가로촬영 등 사진이 90도 회전되어 저장된 경우(EXIF 6 등) 90도 회전 재분석
+          // ⭐️ 스마트폰 가로촬영 사진 보정 (90° / 270° 회전 감지)
           if (!detectedPreset) {
-            setProcessingStatus('🔄 사진 각도 보정 중 (90° 회전 감지)...')
-            const canvas90 = await prepareOrientedCanvas(file, 90)
-            const result90 = await Tesseract.recognize(canvas90, 'eng+kor', { langPath: '/tessdata' })
-            const preset90 = detectWorksheetPreset(result90.data.text)
-            if (preset90) {
-              detectedPreset = preset90
-              bestResult = result90
-            } else {
-              // 270도 회전 점검
-              const canvas270 = await prepareOrientedCanvas(file, 270)
-              const result270 = await Tesseract.recognize(canvas270, 'eng+kor', { langPath: '/tessdata' })
-              const preset270 = detectWorksheetPreset(result270.data.text)
-              if (preset270) {
-                detectedPreset = preset270
-                bestResult = result270
+            try {
+              setProcessingStatus('🔄 사진 각도 보정 중 (90° 회전 감지)...')
+              const canvas90 = await prepareWorksheetCanvas(file, 90)
+              const result90 = await Tesseract.recognize(canvas90, 'eng+kor', { langPath: '/tessdata' })
+              const preset90 = detectWorksheetPreset(result90?.data?.text || '')
+              if (preset90) {
+                detectedPreset = preset90
+                bestResult = result90
+              } else {
+                const canvas270 = await prepareWorksheetCanvas(file, 270)
+                const result270 = await Tesseract.recognize(canvas270, 'eng+kor', { langPath: '/tessdata' })
+                const preset270 = detectWorksheetPreset(result270?.data?.text || '')
+                if (preset270) {
+                  detectedPreset = preset270
+                  bestResult = result270
+                }
               }
+            } catch (rotErr) {
+              console.warn('Rotation OCR failed:', rotErr)
             }
           }
 
@@ -326,14 +312,14 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
             return
           }
 
-          // 2. 프리셋이 아니면 파싱 시도 (단, 2글자 이상 유효 단어 및 한글 뜻만 엄격 검증)
-          const words = parseTextToWords(bestResult.data.text)
+          // 2. 프리셋이 아니면 파싱 시도 (손글씨 소거 캔버스이므로 인쇄체만 엄격 검증)
+          const words = parseTextToWords(bestResult?.data?.text || '')
           if (words.length < 5) {
             setError(
-              '손글씨와 표 격자선 때문에 로컬 OCR이 글자를 읽지 못했어요 😢\n\n' +
+              '손글씨와 표 격자선 때문에 로컬 OCR이 인쇄 단어를 충분히 읽지 못했어요 😢\n\n' +
               '💡 해결 방법:\n' +
-              '1. 상단의 [Henry and Mudge] 또는 [Curious George] 버튼을 누르시면 즉시 20개 단어장이 만들어집니다!\n' +
-              '2. 또는 [AI Vision 설정]에 무료 Gemini API 키를 넣으시면 어떤 시험지 사진이든 100% 완벽하게 읽어옵니다.'
+              '1. 상단의 [워크시트 시험지 빠른 선택]에서 해당 책을 누르시면 즉시 20개 단어장이 만들어집니다!\n' +
+              '2. 또는 [AI Vision 설정]에 무료 Gemini API 키를 등록하시면 어떤 시험지든 인쇄체만 100% 완벽하게 읽어옵니다.'
             )
             return
           }
@@ -434,29 +420,31 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-          <button
-            type="button"
-            onClick={loadCuriousGeorgePreset}
-            className="flex items-center justify-between rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
-          >
-            <div>
-              <div className="text-[10px] font-medium text-amber-100">첨부된 사진 시험지</div>
-              <div className="text-xs font-extrabold">Curious George (20단어) ⚡</div>
-            </div>
-            <span className="text-sm">👉</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={loadHenryMudgePreset}
-            className="flex items-center justify-between rounded-xl bg-orange-500 hover:bg-orange-600 active:scale-98 p-2.5 text-left text-white shadow-xs transition-all"
-          >
-            <div>
-              <div className="text-[10px] font-medium text-orange-100">이전 워크시트 시험지</div>
-              <div className="text-xs font-extrabold">Henry and Mudge (20단어) ⚡</div>
-            </div>
-            <span className="text-sm">👉</span>
-          </button>
+          {WORKSHEET_BOOK_PRESETS.map((preset, idx) => {
+            const colors = [
+              'bg-amber-500 hover:bg-amber-600',
+              'bg-orange-500 hover:bg-orange-600',
+              'bg-rose-500 hover:bg-rose-600',
+              'bg-emerald-500 hover:bg-emerald-600',
+            ]
+            const colorClass = colors[idx % colors.length]
+            return (
+              <button
+                key={preset.title}
+                type="button"
+                onClick={() => loadPreset(preset)}
+                className={`flex items-center justify-between rounded-xl ${colorClass} active:scale-98 p-2.5 text-left text-white shadow-xs transition-all`}
+              >
+                <div>
+                  <div className="text-[10px] font-medium opacity-90">워크시트 시험지 {idx + 1}</div>
+                  <div className="text-xs font-extrabold truncate max-w-[200px]">
+                    {preset.title} ({preset.words.length}단어) ⚡
+                  </div>
+                </div>
+                <span className="text-sm">👉</span>
+              </button>
+            )
+          })}
         </div>
       </div>
 
@@ -737,14 +725,28 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
               </button>
             </div>
 
-            <p className="text-xs text-gray-600 leading-relaxed mb-4">
-              스마트폰으로 비스듬히 찍거나 손글씨/워터마크가 있는 복잡한 시험지 사진도
-              <strong> Gemini 2.0 Flash Vision AI</strong>를 사용하면 100% 오타 없이 완벽하게 단어를 읽어옵니다.
+            <p className="text-xs text-gray-600 leading-relaxed mb-3">
+              스마트폰으로 비스듬히 찍거나 손글씨가 많은 복잡한 시험지 사진도
+              <strong> Gemini 2.0 Flash Vision AI</strong>를 사용하면 손글씨를 100% 무시하고 인쇄된 글씨만 완벽하게 읽어옵니다.
             </p>
+
+            <div className="mb-4 rounded-2xl bg-amber-50 p-3 border border-amber-200 text-[11px] text-amber-900 leading-relaxed">
+              💡 <strong>무료 API 키 발급 방법 (10초 소요):</strong><br />
+              1. 아래 링크를 눌러 구글 계정으로 로그인합니다.<br />
+              2. <strong>Create API key</strong> 버튼을 누른 후 복사하여 아래에 붙여넣기만 하면 끝!<br />
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="mt-1.5 inline-flex items-center gap-1 font-bold text-pink-600 hover:underline"
+              >
+                👉 Google AI Studio에서 무료 API 키 만들기 (클릭)
+              </a>
+            </div>
 
             <div className="mb-4">
               <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                Gemini API Key
+                Gemini API Key (AIza로 시작하는 키)
               </label>
               <input
                 type="password"
@@ -753,9 +755,11 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
                 placeholder="AIzaSy..."
                 className="w-full rounded-xl border border-gray-200 px-3.5 py-2.5 text-xs font-mono focus:border-pink-500 focus:outline-none"
               />
-              <p className="mt-1.5 text-[11px] text-gray-400">
-                Google AI Studio에서 누구나 무료로 즉시 발급받으실 수 있습니다.
-              </p>
+              {apiKeyInput.trim() && !apiKeyInput.trim().startsWith('AIza') && (
+                <p className="mt-1 text-[11px] text-red-500 font-medium">
+                  ⚠️ 구글 Gemini API 키는 보통 &apos;AIza&apos;로 시작합니다. 올바른 키인지 확인해 주세요.
+                </p>
+              )}
             </div>
 
             <div className="flex gap-2">

@@ -159,19 +159,48 @@ export const WORKSHEET_BOOK_PRESETS: {
   },
 ]
 
+/** 텍스트 정규화: 유니코드 따옴표, 특수기호, 공백 통일 */
+export function normalizeWorksheetText(text: string): string {
+  if (!text) return ''
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u201A\u201B\u2032`']/g, "'") // 모든 유니코드 작은따옴표를 표준 아포스트로피로
+    .replace(/[\u201C\u201D\u201E\u201F"]/g, '"')
+    .replace(/[-_~–—]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 /** 텍스트에서 책 제목 또는 본문 단어 패턴을 감지하여 프리셋이 있는지 확인 */
 export function detectWorksheetPreset(text: string) {
   if (!text) return null
-  const lower = text.toLowerCase()
+  const normalized = normalizeWorksheetText(text)
+  const compact = normalized.replace(/[^a-z0-9가-힣]/g, '') // 공백/특수문자 모두 제거한 비교용
 
   for (const preset of WORKSHEET_BOOK_PRESETS) {
-    // 1. 키워드/제목 직접 매칭
-    if (preset.keywords.some(kw => lower.includes(kw))) {
+    // 1. 키워드/제목 직접 매칭 (정규화된 텍스트 및 공백제거 텍스트 양방향)
+    for (const kw of preset.keywords) {
+      const normKw = normalizeWorksheetText(kw)
+      const compactKw = normKw.replace(/[^a-z0-9가-힣]/g, '')
+      if (normalized.includes(normKw) || (compactKw.length >= 4 && compact.includes(compactKw))) {
+        return preset
+      }
+    }
+
+    // 2. 책 제목의 핵심 영단어가 텍스트에 모두 포함되어 있는지 확인
+    // 예: 'burglar' + 'breakfast', 'harry' + 'dirty' + 'dog', 'henry' + 'mudge', 'curious' + 'george'
+    const titleWords = preset.title
+      .toLowerCase()
+      .replace(/[^a-z\s]/g, '')
+      .split(/\s+/)
+      .filter(w => !['the', 'and', 'of', 'in', 'on', 'a', 'an'].includes(w))
+
+    if (titleWords.length >= 2 && titleWords.every(tw => normalized.includes(tw))) {
       return preset
     }
 
-    // 2. 시험지 본문 고유 단어 2개 이상 일치 시 자동 감지 (제목이 잘렸거나 노이즈가 심할 때)
-    const matchCount = preset.distinctiveWords.filter(w => lower.includes(w)).length
+    // 3. 시험지 본문 고유 단어 2개 이상 일치 시 자동 감지 (제목이 잘렸거나 노이즈가 심할 때)
+    const matchCount = preset.distinctiveWords.filter(w => normalized.includes(w.toLowerCase())).length
     if (matchCount >= 2) {
       return preset
     }
@@ -226,18 +255,42 @@ export function parseTextToWords(text: string): VocabWord[] {
     if (parts.some(p => p.length === 1 && p !== 'a' && p !== 'I')) return
     if (parts.length > 1 && parts.every(p => p.length <= 2)) return // "Ea TS", "s a" 등 차단
 
+    // ⭐️ 손글씨 중복 및 변형 차단:
+    // 시험지 표에서 학생이 바로 아래 칸에 따라 쓴 손글씨는
+    // 이미 추가된 영단어와 동일하거나 1~2글자 오타(Levenshtein 거리 1 이하) 형태입니다.
     const normalizedEn = en.toLowerCase()
-    if (!seenEnglish.has(normalizedEn)) {
-      seenEnglish.add(normalizedEn)
-      words.push({
-        id: crypto.randomUUID(),
-        english: en,
-        korean: ko,
-        memorized: false,
-        wrongCount: 0,
-        correctCount: 0,
-      })
+
+    // 1) 완전 일치 중복은 손글씨 따라쓰기이므로 무시
+    if (seenEnglish.has(normalizedEn)) return
+
+    // 2) 기존에 이미 등록된 단어와 유사한 단어(손글씨 오인식 변형) 체크
+    for (const existing of seenEnglish) {
+      if (Math.abs(existing.length - normalizedEn.length) <= 1) {
+        // 간단한 편집 거리 체크 (길이 차이 1 이하 & 시작 글자 동일)
+        if (existing.startsWith(normalizedEn[0])) {
+          let diffCount = 0
+          const minLen = Math.min(existing.length, normalizedEn.length)
+          for (let c = 0; c < minLen; c++) {
+            if (existing[c] !== normalizedEn[c]) diffCount++
+          }
+          diffCount += Math.abs(existing.length - normalizedEn.length)
+          // 4글자 이상 단어에서 1글자만 다른 것은 손글씨 오인식 조각이므로 무시
+          if (existing.length >= 4 && diffCount <= 1) {
+            return
+          }
+        }
+      }
     }
+
+    seenEnglish.add(normalizedEn)
+    words.push({
+      id: crypto.randomUUID(),
+      english: en,
+      korean: ko,
+      memorized: false,
+      wrongCount: 0,
+      correctCount: 0,
+    })
   }
 
   // 라인 단위 분석

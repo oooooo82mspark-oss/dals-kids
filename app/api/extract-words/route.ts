@@ -21,19 +21,28 @@ export async function POST(req: NextRequest) {
     const base64Data = Buffer.from(arrayBuffer).toString('base64')
     const mimeType = file.type || 'image/jpeg'
 
-    const prompt = `You are an expert OCR and education assistant.
+    const prompt = `You are an expert OCR and education assistant specializing in school vocabulary worksheets.
 Examine this vocabulary worksheet/test image carefully.
-The table has TWO rows per vocabulary item:
-- TOP row: PRINTED/TYPESET text (the actual word and Korean meaning) — EXTRACT THIS ONLY
-- BOTTOM row: HANDWRITTEN text (student copied the word by hand) — COMPLETELY IGNORE THIS
 
-Rules:
-1. ONLY extract from the PRINTED rows. Printed text is clean, uniform, and typeset.
-2. COMPLETELY IGNORE all handwritten text. Handwriting appears below each printed word and looks informal/cursive.
-3. Ignore headers: '#', 'Word', 'Meaning', 'Date', 'Name', 'Teacher', 'Parents', 'Book Title', 'Read out loud', etc.
-4. The table may have 2 columns (left side: items 1-10, right side: items 11-20). Extract all items from both columns.
-5. Return ONLY a valid JSON array of objects with "english" and "korean" fields.
-6. No markdown, no code fences, no explanations. Just raw JSON: [{"english": "January", "korean": "1월"}, ...]
+The table in this worksheet has TWO rows per numbered vocabulary item:
+- TOP ROW of each item: TYPESET / COMPUTER-PRINTED English word and Korean meaning — EXTRACT THIS ONLY!
+- BOTTOM ROW of each item: HANDWRITTEN copy written by a student in pencil/pen — COMPLETELY IGNORE THIS!
+
+CRITICAL INSTRUCTIONS:
+1. ONLY extract the COMPUTER-PRINTED words and meanings.
+2. COMPLETELY IGNORE ALL HANDWRITTEN TEXT. Any handwriting (cursive or print written by student below the printed words) MUST BE DISCARDED.
+3. Also ignore red ink circles, check marks, stamps, or teacher annotations.
+4. Ignore headers: '#', 'Word', 'Meaning', 'Date', 'Name', 'Teacher', 'Parents', 'Book Title', 'Read out loud', etc.
+5. Extract the book title if visible at the top (e.g., "The Burglar's Breakfast", "Harry the Dirty Dog", etc.).
+6. The table usually contains 20 items (items 1-10 on the left column, items 11-20 on the right column). Extract all 20 printed items in order.
+7. Return a JSON object in this exact format:
+{
+  "title": "Book Title Here",
+  "words": [
+    { "english": "word1", "korean": "뜻1" },
+    { "english": "word2", "korean": "뜻2" }
+  ]
+}
 `
 
     const response = await fetch(
@@ -57,6 +66,9 @@ Rules:
               ],
             },
           ],
+          generationConfig: {
+            responseMimeType: 'application/json',
+          },
         }),
       }
     )
@@ -72,11 +84,29 @@ Rules:
 
     const data = await response.json()
     const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-    const cleanJson = textOutput.replace(/```(?:json)?/g, '').replace(/```/g, '').trim()
+    
+    // JSON 안전 추출
+    let parsed: any = null
+    try {
+      parsed = JSON.parse(textOutput)
+    } catch {
+      const jsonMatch = textOutput.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+      if (jsonMatch) {
+        parsed = JSON.parse(jsonMatch[0])
+      }
+    }
 
-    const parsedWords = JSON.parse(cleanJson)
+    let words: any[] = []
+    let title: string = ''
 
-    return NextResponse.json({ words: parsedWords })
+    if (Array.isArray(parsed)) {
+      words = parsed
+    } else if (parsed && typeof parsed === 'object') {
+      words = Array.isArray(parsed.words) ? parsed.words : []
+      title = String(parsed.title || '').trim()
+    }
+
+    return NextResponse.json({ words, title })
   } catch (err: any) {
     console.error('Extract words error:', err)
     return NextResponse.json(
