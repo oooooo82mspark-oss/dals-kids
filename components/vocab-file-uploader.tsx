@@ -126,7 +126,8 @@ async function fileToBase64Optimized(file: File): Promise<{ base64: string; mime
 
 /**
  * 클라이언트 브라우저에서 Google Gemini API 직접 호출 (서버 타임아웃/용량 제한 완전 회피)
- * 1차: gemini-2.0-flash -> 2차: gemini-1.5-flash fallback
+ * 1. ModelService.ListModels 호출로 해당 계정에서 실제 지원되는 최적 모델 자동 감지
+ * 2. 감지된 실제 모델과 v1/v1beta 엔드포인트로 generateContent 호출
  */
 async function callGeminiDirect(
   base64Data: string,
@@ -173,52 +174,86 @@ Return a JSON object in this exact schema:
     },
   }
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+  // ⭐️ 1단계: ListModels 호출로 해당 API 키에서 사용 가능한 모델 리스트 동적 조회
+  let targetModels: string[] = []
+  try {
+    const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+    if (listRes.ok) {
+      const listData = await listRes.json()
+      const available = (listData.models || [])
+        .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+        .map((m: any) => m.name.replace(/^models\//, ''))
+
+      // flash 모델 우선 정렬
+      const flashModels = available.filter((m: string) => m.includes('flash'))
+      const otherModels = available.filter((m: string) => !m.includes('flash'))
+      targetModels = [...flashModels, ...otherModels]
+      console.log('Available Gemini models for this key:', targetModels)
+    }
+  } catch (listErr) {
+    console.warn('ListModels query failed, falling back to static list:', listErr)
+  }
+
+  // ListModels가 비어있을 때를 대비한 fallback 후보군
+  if (targetModels.length === 0) {
+    targetModels = [
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash',
+      'gemini-2.0-flash',
+      'gemini-1.5-pro',
+      'gemini-1.5-flash-001',
+      'gemini-1.5-flash-002',
+    ]
+  }
+
   let lastError = ''
+  const apiVersions = ['v1beta', 'v1']
 
-  for (const model of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-      })
-
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}))
-        const errMsg = errJson?.error?.message || `HTTP ${res.status}`
-        lastError = `${model}: ${errMsg}`
-        console.warn(`Gemini ${model} failed:`, errMsg)
-        continue
-      }
-
-      const resData = await res.json()
-      const textOutput = resData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-
-      let parsed: any = null
+  // ⭐️ 2단계: 최적 모델로 순차 호출
+  for (const model of targetModels.slice(0, 6)) {
+    for (const apiVer of apiVersions) {
       try {
-        parsed = JSON.parse(textOutput)
-      } catch {
-        const match = textOutput.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
-        if (match) parsed = JSON.parse(match[0])
-      }
+        const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${model}:generateContent?key=${apiKey}`
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody),
+        })
 
-      let words: { english: string; korean: string }[] = []
-      let title = ''
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}))
+          const errMsg = errJson?.error?.message || `HTTP ${res.status}`
+          lastError = `${model} (${apiVer}): ${errMsg}`
+          continue
+        }
 
-      if (Array.isArray(parsed)) {
-        words = parsed
-      } else if (parsed && typeof parsed === 'object') {
-        words = Array.isArray(parsed.words) ? parsed.words : []
-        title = String(parsed.title || '').trim()
-      }
+        const resData = await res.json()
+        const textOutput = resData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
 
-      if (words.length > 0) {
-        return { title, words }
+        let parsed: any = null
+        try {
+          parsed = JSON.parse(textOutput)
+        } catch {
+          const match = textOutput.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+          if (match) parsed = JSON.parse(match[0])
+        }
+
+        let words: { english: string; korean: string }[] = []
+        let title = ''
+
+        if (Array.isArray(parsed)) {
+          words = parsed
+        } else if (parsed && typeof parsed === 'object') {
+          words = Array.isArray(parsed.words) ? parsed.words : []
+          title = String(parsed.title || '').trim()
+        }
+
+        if (words.length > 0) {
+          return { title, words }
+        }
+      } catch (e: any) {
+        lastError = e?.message || String(e)
       }
-    } catch (e: any) {
-      lastError = e?.message || String(e)
     }
   }
 

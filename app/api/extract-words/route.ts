@@ -64,35 +64,66 @@ CRITICAL INSTRUCTIONS:
       },
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+    // 1단계: ListModels 호출로 사용 가능한 모델 동적 조회
+    let targetModels: string[] = []
+    try {
+      const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
+      if (listRes.ok) {
+        const listData = await listRes.json()
+        const available = (listData.models || [])
+          .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
+          .map((m: any) => m.name.replace(/^models\//, ''))
+
+        const flashModels = available.filter((m: string) => m.includes('flash'))
+        const otherModels = available.filter((m: string) => !m.includes('flash'))
+        targetModels = [...flashModels, ...otherModels]
+      }
+    } catch (listErr) {
+      console.warn('ListModels query failed on server:', listErr)
+    }
+
+    if (targetModels.length === 0) {
+      targetModels = [
+        'gemini-1.5-flash-latest',
+        'gemini-1.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-pro',
+        'gemini-1.5-flash-001',
+        'gemini-1.5-flash-002',
+      ]
+    }
+
     let textOutput = ''
     let lastErrText = ''
+    const apiVersions = ['v1beta', 'v1']
 
-    for (const model of models) {
-      try {
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestPayload),
+    for (const model of targetModels.slice(0, 6)) {
+      for (const apiVer of apiVersions) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/${apiVer}/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(requestPayload),
+            }
+          )
+
+          if (!response.ok) {
+            lastErrText = await response.text()
+            continue
           }
-        )
 
-        if (!response.ok) {
-          lastErrText = await response.text()
-          console.warn(`Gemini ${model} Error:`, lastErrText)
-          continue
+          const data = await response.json()
+          textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+          if (textOutput) break
+        } catch (fErr: any) {
+          lastErrText = fErr?.message || String(fErr)
         }
-
-        const data = await response.json()
-        textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
-        if (textOutput) break
-      } catch (fErr: any) {
-        lastErrText = fErr?.message || String(fErr)
       }
+      if (textOutput) break
     }
 
     if (!textOutput) {
