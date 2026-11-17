@@ -45,45 +45,63 @@ CRITICAL INSTRUCTIONS:
 }
 `
 
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
+    const requestPayload = {
+      contents: [
+        {
+          parts: [
+            { text: prompt },
             {
-              parts: [
-                { text: prompt },
-                {
-                  inline_data: {
-                    mime_type: mimeType,
-                    data: base64Data,
-                  },
-                },
-              ],
+              inline_data: {
+                mime_type: mimeType,
+                data: base64Data,
+              },
             },
           ],
-          generationConfig: {
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    )
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
+    }
 
-    if (!response.ok) {
-      const errText = await response.text()
-      console.error('Gemini API Error:', errText)
+    const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+    let textOutput = ''
+    let lastErrText = ''
+
+    for (const model of models) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestPayload),
+          }
+        )
+
+        if (!response.ok) {
+          lastErrText = await response.text()
+          console.warn(`Gemini ${model} Error:`, lastErrText)
+          continue
+        }
+
+        const data = await response.json()
+        textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+        if (textOutput) break
+      } catch (fErr: any) {
+        lastErrText = fErr?.message || String(fErr)
+      }
+    }
+
+    if (!textOutput) {
+      console.error('All Gemini models failed:', lastErrText)
       return NextResponse.json(
-        { error: 'API_ERROR', message: 'AI Vision 인식 중 오류가 발생했습니다. API 키를 확인해 주세요.' },
+        { error: 'API_ERROR', message: `AI Vision 오류: ${lastErrText || '응답을 받지 못했습니다. API 키를 확인해 주세요.'}` },
         { status: 500 }
       )
     }
-
-    const data = await response.json()
-    const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || ''
     
     // JSON 안전 추출
     let parsed: any = null

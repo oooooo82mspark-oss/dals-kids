@@ -92,6 +92,139 @@ async function prepareWorksheetCanvas(file: File, rotationDeg: number = 0): Prom
   return canvas
 }
 
+/**
+ * 스마트폰 사진을 EXIF 방향에 맞게 똑바로 세우고,
+ * 최대 1600px로 최적화 리사이징하여 가벼운 Base64 JPEG 데이터로 변환 (약 200~400KB)
+ */
+async function fileToBase64Optimized(file: File): Promise<{ base64: string; mimeType: string }> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+    const canvas = document.createElement('canvas')
+    const maxDim = 1600
+    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height))
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas context not available')
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.88)
+    const base64 = dataUrl.split(',')[1]
+    return { base64, mimeType: 'image/jpeg' }
+  } catch {
+    const arrayBuffer = await file.arrayBuffer()
+    const bytes = new Uint8Array(arrayBuffer)
+    let binary = ''
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i])
+    }
+    const base64 = btoa(binary)
+    return { base64, mimeType: file.type || 'image/jpeg' }
+  }
+}
+
+/**
+ * 클라이언트 브라우저에서 Google Gemini API 직접 호출 (서버 타임아웃/용량 제한 완전 회피)
+ * 1차: gemini-2.0-flash -> 2차: gemini-1.5-flash fallback
+ */
+async function callGeminiDirect(
+  base64Data: string,
+  mimeType: string,
+  apiKey: string
+): Promise<{ title: string; words: { english: string; korean: string }[] }> {
+  const prompt = `You are an expert OCR system specializing in English vocabulary worksheets.
+Examine this vocabulary worksheet image carefully.
+
+Worksheet Structure:
+1. Book Title is printed at the top (e.g. "One Fine Day", "Billy the Ghost and Me", etc.).
+2. The table has 20 vocabulary items (items 1-10 on left column, items 11-20 on right column).
+3. For EACH numbered item, there are two lines in the cell:
+   - TOP LINE: Printed English word and printed Korean meaning. (EXTRACT THIS!)
+   - BOTTOM LINE: Handwritten copy by a student in pencil. (COMPLETELY IGNORE THIS!)
+4. Ignore all handwritten text, pencil marks, colored pen circles, dates, and names.
+5. Extract ONLY the 20 computer-printed English words and their printed Korean meanings.
+
+Return a JSON object in this exact schema:
+{
+  "title": "Book Title",
+  "words": [
+    { "english": "word1", "korean": "meaning1" },
+    ...
+  ]
+}`
+
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          {
+            inline_data: {
+              mime_type: mimeType,
+              data: base64Data,
+            },
+          },
+        ],
+      },
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+    },
+  }
+
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+  let lastError = ''
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}))
+        const errMsg = errJson?.error?.message || `HTTP ${res.status}`
+        lastError = `${model}: ${errMsg}`
+        console.warn(`Gemini ${model} failed:`, errMsg)
+        continue
+      }
+
+      const resData = await res.json()
+      const textOutput = resData?.candidates?.[0]?.content?.parts?.[0]?.text || ''
+
+      let parsed: any = null
+      try {
+        parsed = JSON.parse(textOutput)
+      } catch {
+        const match = textOutput.match(/\{[\s\S]*\}|\[[\s\S]*\]/)
+        if (match) parsed = JSON.parse(match[0])
+      }
+
+      let words: { english: string; korean: string }[] = []
+      let title = ''
+
+      if (Array.isArray(parsed)) {
+        words = parsed
+      } else if (parsed && typeof parsed === 'object') {
+        words = Array.isArray(parsed.words) ? parsed.words : []
+        title = String(parsed.title || '').trim()
+      }
+
+      if (words.length > 0) {
+        return { title, words }
+      }
+    } catch (e: any) {
+      lastError = e?.message || String(e)
+    }
+  }
+
+  throw new Error(`Google AI Vision 분석 실패: ${lastError || '단어를 인식하지 못했습니다.'}`)
+}
+
 export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
   const [activeTab, setActiveTab] = useState<'file' | 'text'>('file')
   const [isDragOver, setIsDragOver] = useState(false)
@@ -216,24 +349,24 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
 
         // 3. 이미지 (JPG, PNG)
         if (extension === 'jpg' || extension === 'jpeg' || extension === 'png') {
-          // A. API 키가 있으면 Gemini Vision으로 초정밀 추출 (손글씨 100% 자동 분리)
-          const currentKey = savedApiKey || (typeof window !== 'undefined' ? localStorage.getItem('dals-gemini-key') : '')
+          const rawKey = savedApiKey || (typeof window !== 'undefined' ? localStorage.getItem('dals-gemini-key') : '') || ''
+          const currentKey = rawKey.trim()
 
-          if (currentKey && currentKey.startsWith('AIza')) {
+          // A. API 키가 있는 경우: Google AI Vision (손글씨 100% 무시, 인쇄체 20단어 추출)
+          if (currentKey) {
             setProcessingStatus('🤖 AI Vision으로 인쇄체 단어 정밀 분석 중 (손글씨 무시)...')
-            const formData = new FormData()
-            formData.append('file', file)
-            formData.append('apiKey', currentKey)
 
             try {
-              const res = await fetch('/api/extract-words', {
-                method: 'POST',
-                body: formData,
-              })
+              // 1. 스마트폰 원본 사진을 1600px, 300KB 고화질 JPEG로 최적화 리사이징
+              setProcessingStatus('⚡ 시험지 사진 최적화 및 정렬 중...')
+              const { base64, mimeType } = await fileToBase64Optimized(file)
 
-              const data = await res.json()
-              if (res.ok && Array.isArray(data.words) && data.words.length > 0) {
-                const formattedWords: VocabWord[] = data.words.map((w: any) => ({
+              // 2. 브라우저에서 Google Gemini API 직접 호출 (서버 타임아웃/용량 제한 완전 회피)
+              setProcessingStatus('🤖 구글 AI가 시험지 표의 인쇄체 20단어를 추출하고 있어요...')
+              const result = await callGeminiDirect(base64, mimeType, currentKey)
+
+              if (result && Array.isArray(result.words) && result.words.length > 0) {
+                const formattedWords: VocabWord[] = result.words.map((w: any) => ({
                   id: crypto.randomUUID(),
                   english: String(w.english || '').trim(),
                   korean: String(w.korean || '').trim(),
@@ -241,11 +374,16 @@ export function FileUploader({ onWordsExtracted }: FileUploaderProps) {
                   wrongCount: 0,
                   correctCount: 0,
                 }))
-                processExtractedWords(formattedWords, data.title || file.name)
+                processExtractedWords(formattedWords, result.title || file.name)
                 return
               }
-            } catch (apiErr) {
-              console.warn('Gemini API call failed, falling back to local OCR:', apiErr)
+            } catch (aiErr: any) {
+              console.error('Gemini direct call error:', aiErr)
+              const msg = aiErr?.message || String(aiErr)
+              setError(
+                `⚠️ AI Vision 분석 실패:\n${msg}\n\n우측 상단의 [AI Vision 설정]에서 API 키가 올바른지 확인해 주세요.`
+              )
+              return
             }
           }
 
