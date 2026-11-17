@@ -66,6 +66,16 @@ CRITICAL INSTRUCTIONS:
 
     // 1단계: ListModels 호출로 사용 가능한 모델 동적 조회
     let targetModels: string[] = []
+
+    const STANDARD_FREE_MODELS = [
+      'gemini-2.0-flash',
+      'gemini-1.5-flash',
+      'gemini-1.5-flash-latest',
+      'gemini-1.5-flash-8b',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-pro',
+    ]
+
     try {
       const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
       if (listRes.ok) {
@@ -73,24 +83,24 @@ CRITICAL INSTRUCTIONS:
         const available = (listData.models || [])
           .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
           .map((m: any) => m.name.replace(/^models\//, ''))
+          .filter((name: string) =>
+            !name.includes('-image') &&
+            !name.includes('imagen') &&
+            !name.includes('embedding') &&
+            !name.includes('aqa') &&
+            !name.includes('tts')
+          )
 
-        const flashModels = available.filter((m: string) => m.includes('flash'))
-        const otherModels = available.filter((m: string) => !m.includes('flash'))
-        targetModels = [...flashModels, ...otherModels]
+        const prioritized = STANDARD_FREE_MODELS.filter(m => available.includes(m))
+        const remaining = available.filter((m: string) => !prioritized.includes(m))
+        targetModels = [...prioritized, ...remaining]
       }
     } catch (listErr) {
       console.warn('ListModels query failed on server:', listErr)
     }
 
     if (targetModels.length === 0) {
-      targetModels = [
-        'gemini-1.5-flash-latest',
-        'gemini-1.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-pro',
-        'gemini-1.5-flash-001',
-        'gemini-1.5-flash-002',
-      ]
+      targetModels = STANDARD_FREE_MODELS
     }
 
     let textOutput = ''

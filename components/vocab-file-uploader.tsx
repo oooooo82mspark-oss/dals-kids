@@ -176,6 +176,17 @@ Return a JSON object in this exact schema:
 
   // ⭐️ 1단계: ListModels 호출로 해당 API 키에서 사용 가능한 모델 리스트 동적 조회
   let targetModels: string[] = []
+
+  // 무료 티어가 넉넉한(하루 1,500회) 표준 범용 멀티모달 모델 우선순위
+  const STANDARD_FREE_MODELS = [
+    'gemini-2.0-flash',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-8b',
+    'gemini-2.0-flash-lite',
+    'gemini-1.5-pro',
+  ]
+
   try {
     const listRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
     if (listRes.ok) {
@@ -183,27 +194,28 @@ Return a JSON object in this exact schema:
       const available = (listData.models || [])
         .filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
         .map((m: any) => m.name.replace(/^models\//, ''))
+        // ⚠️ 중요: '-image', 'imagen', 'embedding' 등 특수/유료전용 모델(limit: 0) 철저히 배제!
+        .filter((name: string) =>
+          !name.includes('-image') &&
+          !name.includes('imagen') &&
+          !name.includes('embedding') &&
+          !name.includes('aqa') &&
+          !name.includes('tts')
+        )
 
-      // flash 모델 우선 정렬
-      const flashModels = available.filter((m: string) => m.includes('flash'))
-      const otherModels = available.filter((m: string) => !m.includes('flash'))
-      targetModels = [...flashModels, ...otherModels]
-      console.log('Available Gemini models for this key:', targetModels)
+      // 검증된 무료 멀티모달 모델을 최우선으로 배치
+      const prioritized = STANDARD_FREE_MODELS.filter(m => available.includes(m))
+      const remaining = available.filter((m: string) => !prioritized.includes(m))
+      targetModels = [...prioritized, ...remaining]
+      console.log('Prioritized Gemini models for this key:', targetModels)
     }
   } catch (listErr) {
-    console.warn('ListModels query failed, falling back to static list:', listErr)
+    console.warn('ListModels query failed, falling back to standard list:', listErr)
   }
 
   // ListModels가 비어있을 때를 대비한 fallback 후보군
   if (targetModels.length === 0) {
-    targetModels = [
-      'gemini-1.5-flash-latest',
-      'gemini-1.5-flash',
-      'gemini-2.0-flash',
-      'gemini-1.5-pro',
-      'gemini-1.5-flash-001',
-      'gemini-1.5-flash-002',
-    ]
+    targetModels = STANDARD_FREE_MODELS
   }
 
   let lastError = ''
